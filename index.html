@@ -1,0 +1,2283 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Kurum & 2. Şube Günlük Kontrol Paneli</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- SheetJS for Excel Export -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <!-- Resmi Firebase Web SDK (Compat CDN - Tek Dosya HTML için en kararlı sürüm) -->
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #f1f5f9;
+      color: #0f172a;
+      -webkit-tap-highlight-color: transparent;
+    }
+    @media print {
+      .no-print { display: none !important; }
+      body { background-color: #ffffff; padding-bottom: 0 !important; }
+      .print-card { box-shadow: none !important; border: 1px solid #cbd5e1 !important; break-inside: avoid; }
+      .tab-section { display: block !important; }
+    }
+    .status-tamamlandi { background-color: #dcfce7; color: #166534; border-color: #86efac; }
+    .status-eksik { background-color: #fee2e2; color: #991b1b; border-color: #fca5a5; }
+    .status-hatirlat { background-color: #fef3c7; color: #92400e; border-color: #fde047; }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col pb-20 md:pb-8">
+
+  <!-- Bildirim / Kayıt Toast Mesajı -->
+  <div id="saveToast" class="fixed top-4 right-4 z-50 hidden items-center gap-2 bg-emerald-600 text-white px-4 py-3 rounded-2xl shadow-xl border border-emerald-400 text-xs sm:text-sm font-semibold transition-all">
+    <i data-lucide="check-circle-2" class="w-5 h-5 shrink-0"></i>
+    <span id="saveToastText">Tüm veriler başarıyla kaydedildi!</span>
+  </div>
+
+  <!-- Üst Menü / Header -->
+  <header class="bg-slate-900 text-white shadow-lg sticky top-0 z-30 no-print">
+    <div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-3 flex flex-col gap-2.5">
+      
+      <!-- Üst Satır: Başlık ve Kaydet / Ayarlar Butonları -->
+      <div class="flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2.5 min-w-0">
+          <div class="bg-indigo-600 p-2 rounded-xl shadow-inner shrink-0">
+            <i data-lucide="building-2" class="w-5 h-5 text-white"></i>
+          </div>
+          <div class="truncate">
+            <h1 class="text-sm sm:text-lg font-bold tracking-tight truncate" id="institutionNameDisplay">Kurum Kontrol & Takip</h1>
+            <p class="text-[11px] text-slate-400 flex items-center gap-1.5">
+              <span id="syncIndicator" class="w-2 h-2 rounded-full bg-amber-400 animate-pulse inline-block shrink-0"></span>
+              <span id="syncStatusText" class="truncate">Firebase Buluta Bağlanıyor...</span>
+            </p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          <!-- Manuel Kaydet & Şimdi Senkronize Et Butonu -->
+          <button onclick="manualSaveAction()" class="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white text-xs sm:text-sm font-bold px-3 py-2 rounded-xl transition shadow-sm">
+            <i data-lucide="save" class="w-4 h-4"></i>
+            <span>Kaydet</span>
+          </button>
+
+          <button onclick="exportToExcel()" class="flex items-center gap-1 bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 text-xs font-semibold px-2.5 py-2 rounded-xl transition" title="Excel İndir">
+            <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+            <span class="hidden lg:inline">Excel</span>
+          </button>
+
+          <button onclick="openCloudModal()" class="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-2.5 py-2 rounded-xl transition" title="Firebase Bulut & Yedekleme">
+            <i data-lucide="cloud" class="w-4 h-4"></i>
+            <span class="hidden sm:inline">Firebase & Yedek</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Alt Satır: Tarih Seçici & Durum Filtresi -->
+      <div class="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-800">
+        <div class="flex items-center bg-slate-800 rounded-xl p-1 border border-slate-700 w-full sm:w-auto justify-between sm:justify-start">
+          <button onclick="changeDate(-1)" class="p-1.5 hover:bg-slate-700 rounded-lg text-slate-300 hover:text-white transition" title="Önceki Gün">
+            <i data-lucide="chevron-left" class="w-4 h-4"></i>
+          </button>
+          <input type="date" id="selectedDateInput" onchange="onDateChange(this.value)" class="bg-transparent text-white text-xs sm:text-sm font-semibold px-2 py-0.5 focus:outline-none cursor-pointer text-center" />
+          <button onclick="changeDate(1)" class="p-1.5 hover:bg-slate-700 rounded-lg text-slate-300 hover:text-white transition" title="Sonraki Gün">
+            <i data-lucide="chevron-right" class="w-4 h-4"></i>
+          </button>
+          <button onclick="goToToday()" class="text-xs bg-indigo-600 hover:bg-indigo-500 text-white px-2.5 py-1 rounded-lg font-semibold ml-1 transition">
+            Bugün
+          </button>
+        </div>
+
+        <div class="flex items-center gap-1 overflow-x-auto no-scrollbar w-full sm:w-auto">
+          <button onclick="setFilterStatus('all')" id="filterBtn-all" class="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-white text-slate-900 shrink-0">
+            Tümü
+          </button>
+          <button onclick="setFilterStatus('hatirlat')" id="filterBtn-hatirlat" class="text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-slate-800 text-amber-300 hover:bg-slate-700 shrink-0 flex items-center gap-1">
+            <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span> Hatırlat (<span id="topRemindCount">0</span>)
+          </button>
+          <button onclick="setFilterStatus('eksik')" id="filterBtn-eksik" class="text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-slate-800 text-rose-300 hover:bg-slate-700 shrink-0 flex items-center gap-1">
+            <span class="w-1.5 h-1.5 rounded-full bg-rose-400"></span> Eksik (<span id="topMissingCount">0</span>)
+          </button>
+          <button onclick="setFilterStatus('tamamlandi')" id="filterBtn-tamamlandi" class="text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-slate-800 text-emerald-300 hover:bg-slate-700 shrink-0 flex items-center gap-1">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Tamam (<span id="topDoneCount">0</span>)
+          </button>
+          <button onclick="copyFromPreviousDay()" class="text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-indigo-950 text-indigo-300 border border-indigo-800 hover:bg-indigo-900 shrink-0 ml-auto sm:ml-1">
+            + Dünü Aktar
+          </button>
+        </div>
+      </div>
+
+      <!-- Masaüstü & Tablet Sekme Çubuğu -->
+      <nav class="hidden md:flex items-center gap-1.5 pt-2 border-t border-slate-800 overflow-x-auto no-scrollbar">
+        <button onclick="switchTab('seans')" id="deskTab-seans" class="tab-btn px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2">
+          <i data-lucide="bar-chart-3" class="w-4 h-4"></i>
+          <span>1. Seans & Aylık Özet</span>
+        </button>
+        <button onclick="switchTab('sube2')" id="deskTab-sube2" class="tab-btn px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2">
+          <i data-lucide="git-branch" class="w-4 h-4"></i>
+          <span>2. Şube Kontrol</span>
+          <span id="deskBadge-sube2" class="px-1.5 py-0.2 rounded-full text-[10px] bg-purple-500/30 text-purple-200">0</span>
+        </button>
+        <button onclick="switchTab('temizlik')" id="deskTab-temizlik" class="tab-btn px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2">
+          <i data-lucide="sparkles" class="w-4 h-4"></i>
+          <span>3. Temizlik & Kamera</span>
+          <span id="deskBadge-temizlik" class="px-1.5 py-0.2 rounded-full text-[10px] bg-sky-500/30 text-sky-200">0</span>
+        </button>
+        <button onclick="switchTab('odemeler')" id="deskTab-odemeler" class="tab-btn px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2">
+          <i data-lucide="wallet" class="w-4 h-4"></i>
+          <span>4. Maaş & Acil Ödemeler</span>
+          <span id="deskBadge-odemeler" class="px-1.5 py-0.2 rounded-full text-[10px] bg-rose-500/30 text-rose-200">0</span>
+        </button>
+        <button onclick="switchTab('notlar')" id="deskTab-notlar" class="tab-btn px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2">
+          <i data-lucide="clipboard-list" class="w-4 h-4"></i>
+          <span>5. Notlar & Geçmiş</span>
+          <span id="deskBadge-notlar" class="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-500/30 text-amber-200">0</span>
+        </button>
+        <button onclick="switchTab('tumu')" id="deskTab-tumu" class="tab-btn ml-auto px-3 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-1.5">
+          <i data-lucide="layout-grid" class="w-4 h-4"></i>
+          <span>Tümünü Tek Sayfada Gör</span>
+        </button>
+      </nav>
+
+    </div>
+  </header>
+
+  <!-- Hızlı Özet Şeridi -->
+  <div class="bg-white border-b border-slate-200 px-3 py-2 shadow-xs no-print">
+    <div class="max-w-7xl mx-auto grid grid-cols-4 gap-2 text-center">
+      <div onclick="switchTab('seans')" class="cursor-pointer bg-indigo-50/70 rounded-xl p-1.5 border border-indigo-100">
+        <div class="text-[10px] font-semibold text-indigo-600 uppercase truncate">Bugün / Ay Ort.</div>
+        <div class="text-xs sm:text-sm font-bold text-slate-900"><span id="quickDailySes">0</span> <span class="text-[10px] font-normal text-slate-500">/ Ort:<span id="quickAvgSes">0</span></span></div>
+      </div>
+      <div onclick="switchTab('sube2')" class="cursor-pointer bg-purple-50/70 rounded-xl p-1.5 border border-purple-100">
+        <div class="text-[10px] font-semibold text-purple-700 uppercase truncate">2. Şube Soru</div>
+        <div class="text-xs sm:text-sm font-bold text-purple-900" id="quickB2Stat">0/0</div>
+      </div>
+      <div onclick="switchTab('temizlik')" class="cursor-pointer bg-sky-50/70 rounded-xl p-1.5 border border-sky-100">
+        <div class="text-[10px] font-semibold text-sky-700 uppercase truncate">Temizlik</div>
+        <div class="text-xs sm:text-sm font-bold text-sky-900" id="quickCleanStat">0/0</div>
+      </div>
+      <div onclick="switchTab('odemeler')" class="cursor-pointer bg-amber-50/70 rounded-xl p-1.5 border border-amber-100">
+        <div class="text-[10px] font-semibold text-amber-800 uppercase truncate">Bekleyen Ödeme</div>
+        <div class="text-xs sm:text-sm font-bold text-amber-900 truncate" id="quickPayStat">0 ₺</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Ana İçerik -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 space-y-5">
+
+    <!-- SEKME 1: SEANS, ÖĞRENCİ & AYLIK ANALİZ -->
+    <div id="tabContent-seans" class="tab-section space-y-5">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200/80 print-card flex flex-col justify-between">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold uppercase tracking-wider text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg">Merkez Günlük Seans Girişi</span>
+            <span class="text-xs text-slate-400 font-medium" id="currentDateBadge1"></span>
+          </div>
+          <div class="my-4 flex items-center gap-4">
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-500 mb-1">Toplam Seans</label>
+              <input type="number" min="0" id="dailySessionsInput" oninput="updateDailyMetrics()"
+                class="text-3xl font-bold text-indigo-950 w-28 bg-indigo-50/50 border-2 border-indigo-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none text-center"
+                placeholder="0" />
+            </div>
+            <div class="flex-1 bg-slate-50 rounded-xl p-3 border border-slate-200/70 space-y-1 text-xs">
+              <div class="flex justify-between">
+                <span class="text-slate-500">Bu Ay Toplam:</span>
+                <strong id="monthlySessionsTotal" class="text-indigo-700 font-bold">0</strong>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-slate-500">Günlük Ortalama:</span>
+                <strong id="monthlySessionsAvg" class="text-emerald-700 font-bold">0</strong>
+              </div>
+              <div class="text-[10px] text-slate-400 text-right" id="monthlyActiveDaysLabel">(0 aktif gün)</div>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-3 text-xs border-t border-slate-100 pt-3">
+            <div class="flex items-center justify-between bg-slate-50 px-3 py-2 rounded-xl border border-slate-200/60">
+              <span class="font-semibold text-slate-600">Bireysel Seans:</span>
+              <input type="number" min="0" id="indSessionsInput" oninput="updateSubSessions()" class="w-16 bg-white border border-slate-300 rounded-lg px-2 py-1 text-center font-bold text-slate-800" placeholder="0">
+            </div>
+            <div class="flex items-center justify-between bg-slate-50 px-3 py-2 rounded-xl border border-slate-200/60">
+              <span class="font-semibold text-slate-600">Grup Seansı:</span>
+              <input type="number" min="0" id="grpSessionsInput" oninput="updateSubSessions()" class="w-16 bg-white border border-slate-300 rounded-lg px-2 py-1 text-center font-bold text-slate-800" placeholder="0">
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200/80 print-card flex flex-col justify-between">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold uppercase tracking-wider text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-lg">Mevcut Öğrenci Sayımız</span>
+            <i data-lucide="users" class="w-5 h-5 text-emerald-500"></i>
+          </div>
+          <div class="my-4 flex items-center gap-4">
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-500 mb-1">Kayıtlı Öğrenci</label>
+              <input type="number" min="0" id="studentCountInput" oninput="updateDailyMetrics()"
+                class="text-3xl font-bold text-emerald-950 w-28 bg-emerald-50/50 border-2 border-emerald-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none text-center"
+                placeholder="0" />
+            </div>
+            <div class="flex-1 bg-slate-50 rounded-xl p-3 border border-slate-200/70 space-y-1 text-xs">
+              <div class="flex justify-between">
+                <span class="text-slate-500">Merkez Öğrenci:</span>
+                <strong id="mainStudentSummary" class="text-emerald-700 font-bold">0</strong>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-slate-500">2. Şube Öğrenci:</span>
+                <strong id="branch2StudentSummary" class="text-purple-700 font-bold">0</strong>
+              </div>
+              <div class="text-[10px] text-slate-400 text-right">Otomatik sonraki güne devreder</div>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-3 text-xs border-t border-slate-100 pt-3">
+            <div class="flex items-center justify-between bg-slate-50 px-3 py-2 rounded-xl border border-slate-200/60">
+              <span class="font-semibold text-slate-600">Bugün Gelen:</span>
+              <input type="number" min="0" id="attendingStudentsInput" oninput="updateDailyMetrics()" class="w-16 bg-white border border-slate-300 rounded-lg px-2 py-1 text-center font-bold text-slate-800" placeholder="0">
+            </div>
+            <div class="flex items-center justify-between bg-slate-50 px-3 py-2 rounded-xl border border-slate-200/60">
+              <span class="font-semibold text-slate-600">Telafi Gelen:</span>
+              <input type="number" min="0" id="makeupStudentsInput" oninput="updateDailyMetrics()" class="w-16 bg-white border border-slate-300 rounded-lg px-2 py-1 text-center font-bold text-slate-800" placeholder="0">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <section class="bg-white rounded-2xl shadow-sm border border-indigo-200/80 overflow-hidden print-card">
+        <div class="px-4 sm:px-5 py-3.5 border-b border-slate-100 bg-gradient-to-r from-indigo-50/70 via-white to-emerald-50/50 flex flex-wrap items-center justify-between gap-3">
+          <div class="flex items-center gap-2.5">
+            <div class="bg-indigo-600 text-white p-2 rounded-xl shadow-sm">
+              <i data-lucide="trending-up" class="w-5 h-5"></i>
+            </div>
+            <div>
+              <h2 class="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-2 flex-wrap">
+                <span>Aylık Seans Takibi & Ortalama Analizi</span>
+                <span id="selectedMonthBadge" class="text-xs bg-indigo-100 text-indigo-800 px-2.5 py-0.5 rounded-full font-semibold"></span>
+              </h2>
+              <p class="text-xs text-slate-500">Günlük seansların aylık toplamı, günlük ortalaması ve grafik dağılımı</p>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <label class="text-xs font-semibold text-slate-600">Ay:</label>
+            <input type="month" id="analyticsMonthInput" onchange="renderMonthlyAnalytics()"
+              class="text-xs font-semibold bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          </div>
+        </div>
+
+        <div class="p-4 sm:p-5 space-y-4">
+          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3">
+            <div class="bg-indigo-50/60 border border-indigo-100 rounded-xl p-3">
+              <span class="text-[10px] sm:text-[11px] font-semibold text-indigo-600 uppercase">Merkez Aylık Toplam</span>
+              <div class="text-lg sm:text-xl font-bold text-slate-900 mt-0.5" id="mStatMainTotal">0</div>
+              <span class="text-[10px] text-slate-500" id="mStatMainSub">Bireysel: 0 | Grup: 0</span>
+            </div>
+
+            <div class="bg-emerald-50/60 border border-emerald-100 rounded-xl p-3">
+              <span class="text-[10px] sm:text-[11px] font-semibold text-emerald-700 uppercase">Merkez Günlük Ort.</span>
+              <div class="text-lg sm:text-xl font-bold text-emerald-800 mt-0.5" id="mStatMainAvg">0</div>
+              <span class="text-[10px] text-slate-500" id="mStatActiveDays">0 aktif iş günü</span>
+            </div>
+
+            <div class="bg-amber-50/60 border border-amber-100 rounded-xl p-3">
+              <span class="text-[10px] sm:text-[11px] font-semibold text-amber-800 uppercase">En Yüksek / Düşük</span>
+              <div class="text-base sm:text-lg font-bold text-slate-900 mt-0.5" id="mStatMinMax">0 / 0</div>
+              <span class="text-[10px] text-slate-500" id="mStatMaxDate">En yoğun: -</span>
+            </div>
+
+            <div class="bg-purple-50/60 border border-purple-100 rounded-xl p-3">
+              <span class="text-[10px] sm:text-[11px] font-semibold text-purple-700 uppercase">2. Şube Aylık Toplam</span>
+              <div class="text-lg sm:text-xl font-bold text-purple-900 mt-0.5" id="mStatBranch2Total">0</div>
+              <span class="text-[10px] text-slate-500" id="mStatBranch2Days">0 aktif gün</span>
+            </div>
+
+            <div class="bg-fuchsia-50/60 border border-fuchsia-100 rounded-xl p-3">
+              <span class="text-[10px] sm:text-[11px] font-semibold text-fuchsia-700 uppercase">2. Şube Günlük Ort.</span>
+              <div class="text-lg sm:text-xl font-bold text-fuchsia-900 mt-0.5" id="mStatBranch2Avg">0</div>
+              <span class="text-[10px] text-slate-500">2. Şube ortalaması</span>
+            </div>
+
+            <div class="bg-slate-900 text-white rounded-xl p-3">
+              <span class="text-[10px] sm:text-[11px] font-semibold text-indigo-300 uppercase">İki Şube Toplam</span>
+              <div class="text-lg sm:text-xl font-bold text-white mt-0.5" id="mStatCombinedTotal">0</div>
+              <span class="text-[10px] text-slate-300" id="mStatCombinedAvg">Genel Ort: 0 / gün</span>
+            </div>
+          </div>
+
+          <div>
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-semibold text-slate-600">Günlük Seans Dağılım Grafiği (Güne dokunarak o güne gidebilirsiniz)</span>
+            </div>
+            <div id="monthlyDailyBarsContainer" class="flex items-end gap-1.5 overflow-x-auto pb-2 pt-4 px-2 bg-slate-50 rounded-xl border border-slate-200/80 min-h-[115px]"></div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- SEKME 2: 2. ŞUBE GÜNLÜK KONTROL & SORULAR -->
+    <div id="tabContent-sube2" class="tab-section hidden space-y-5">
+      <section class="bg-white rounded-2xl shadow-sm border-2 border-purple-200 overflow-hidden print-card">
+        <div class="px-4 sm:px-5 py-4 border-b border-purple-100 bg-gradient-to-r from-purple-50 via-fuchsia-50/40 to-white flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div class="flex items-center gap-3">
+            <div class="bg-purple-600 text-white p-2.5 rounded-xl shadow-sm shrink-0">
+              <i data-lucide="git-branch" class="w-5 h-5"></i>
+            </div>
+            <div>
+              <div class="flex items-center gap-2 flex-wrap">
+                <h2 class="text-base font-bold text-slate-900" id="branch2TitleDisplay">2. Şube Günlük Kontrol & Sorulacak Sorular</h2>
+                <span class="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800" id="branch2ProgressBadge">0 / 0 Kontrol Edildi</span>
+              </div>
+              <p class="text-xs text-slate-600">Görüşmeler, araç/servis durumu, seans sıkıntıları ve 2. şube günlük soruları</p>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap items-center justify-between sm:justify-end gap-2 bg-white p-2.5 rounded-xl border border-purple-200 shadow-xs">
+            <div class="flex items-center gap-1.5">
+              <span class="text-xs font-semibold text-purple-800">2. Şube Seans:</span>
+              <input type="number" min="0" id="branch2SessionsInput" oninput="updateBranch2Metrics()"
+                class="w-16 text-sm font-bold text-purple-900 bg-purple-50 border border-purple-300 rounded-lg px-2 py-1 text-center focus:outline-none focus:ring-2 focus:ring-purple-500"
+                placeholder="0" />
+            </div>
+            <div class="flex items-center gap-1.5">
+              <span class="text-xs font-semibold text-purple-800">Öğrenci:</span>
+              <input type="number" min="0" id="branch2StudentsInput" oninput="updateBranch2Metrics()"
+                class="w-16 text-sm font-bold text-purple-900 bg-purple-50 border border-purple-300 rounded-lg px-2 py-1 text-center focus:outline-none focus:ring-2 focus:ring-purple-500"
+                placeholder="0" />
+            </div>
+            <button onclick="markAllBranch2('tamamlandi')" class="text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold px-2.5 py-1.5 rounded-lg border border-emerald-200 transition no-print">
+              Tümünü Tamamla
+            </button>
+          </div>
+        </div>
+
+        <div class="p-4 sm:p-5 space-y-4">
+          <div id="branch2QuestionsContainer" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
+
+          <div class="pt-3 border-t border-purple-100 flex flex-col sm:flex-row items-stretch sm:items-center gap-2 no-print">
+            <select id="newBranch2Category" class="text-xs font-semibold bg-purple-50 border border-purple-200 rounded-xl px-3 py-2.5 text-purple-900 focus:outline-none">
+              <option value="Görüşme">📞 Görüşme</option>
+              <option value="Araç/Servis">🚐 Araç / Servis</option>
+              <option value="Seans/Öğrenci">📊 Seans / Öğrenci</option>
+              <option value="Personel">👩‍🏫 Personel</option>
+              <option value="Genel Kontrol">📋 Genel Kontrol</option>
+            </select>
+            <input type="text" id="newBranch2QuestionInput"
+              placeholder="2. Şube için yeni soru veya hatırlatma ekle..."
+              class="flex-1 text-sm bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              onkeydown="if(event.key==='Enter') addBranch2Question()" />
+            <button onclick="addBranch2Question()" class="bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold px-4 py-2.5 rounded-xl transition flex items-center justify-center gap-1.5">
+              <i data-lucide="plus" class="w-4 h-4"></i> Soru Ekle
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- SEKME 3: TEMİZLİK ALANLARI & KAMERA YEDEK -->
+    <div id="tabContent-temizlik" class="tab-section hidden space-y-5">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        <div class="lg:col-span-7 bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden print-card">
+          <div class="px-4 sm:px-5 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2 bg-slate-50/50">
+            <div class="flex items-center gap-2.5">
+              <div class="bg-sky-100 text-sky-600 p-2 rounded-xl">
+                <i data-lucide="sparkles" class="w-5 h-5"></i>
+              </div>
+              <div>
+                <h2 class="text-base font-bold text-slate-900">Günlük Temizlik Kontrolü (<span id="cleaningProgressText">0/0</span>)</h2>
+                <p class="text-xs text-slate-500">WC, Bireysel Odalar, Grup Odaları, Bekleme Salonu</p>
+              </div>
+            </div>
+            <button onclick="markAllCleaning('tamamlandi')" class="text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold px-3 py-1.5 rounded-xl border border-emerald-200 transition no-print">
+              Tümünü Tamamla
+            </button>
+          </div>
+
+          <div class="p-4 sm:p-5 space-y-3">
+            <div id="cleaningListContainer" class="space-y-2.5"></div>
+
+            <div class="pt-3 border-t border-slate-100 flex flex-col sm:flex-row items-stretch sm:items-center gap-2 no-print">
+              <input type="text" id="newCleaningAreaInput" placeholder="Yeni alan ekle (Örn: 3. Kat WC, Oyun Odası, Bahçe)..."
+                class="flex-1 text-sm bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                onkeydown="if(event.key==='Enter') addCleaningArea()" />
+              <button onclick="addCleaningArea()" class="bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold px-4 py-2.5 rounded-xl transition flex items-center justify-center gap-1.5">
+                <i data-lucide="plus" class="w-4 h-4"></i> Alan Ekle
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="lg:col-span-5 bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden print-card self-start">
+          <div class="px-4 sm:px-5 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2 bg-slate-50/50">
+            <div class="flex items-center gap-2.5">
+              <div class="bg-violet-100 text-violet-600 p-2 rounded-xl">
+                <i data-lucide="video" class="w-5 h-5"></i>
+              </div>
+              <div>
+                <h2 class="text-base font-bold text-slate-900">Kamera Kayıtları Yedekleme</h2>
+                <p class="text-xs text-slate-500">Kayıt cihazı ve yedekleme durumu</p>
+              </div>
+            </div>
+            <div id="cameraStatusControl"></div>
+          </div>
+
+          <div class="p-4 sm:p-5 space-y-3.5">
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">Yedeklenen Cihaz / Disk</label>
+              <input type="text" id="camDeviceInput" oninput="updateCameraInfo()" placeholder="Örn: Harici Disk 1 / Bulut"
+                class="w-full text-sm bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-500" />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">Kayıt Tarih Aralığı</label>
+              <input type="text" id="camRangeInput" oninput="updateCameraInfo()" placeholder="Örn: Son 7 Gün / Bugün"
+                class="w-full text-sm bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-500" />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">Aktif Kamera Durumu</label>
+              <input type="text" id="camHealthInput" oninput="updateCameraInfo()" placeholder="Örn: 16/16 Kamera Aktif"
+                class="w-full text-sm bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-500" />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">Kamera / Yedekleme Notu</label>
+              <textarea id="camNoteInput" rows="3" oninput="updateCameraInfo()" placeholder="Kamera kayıtları, kör nokta, disk doluluğu veya yedekleme ile ilgili notunuz..."
+                class="w-full text-sm bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-500"></textarea>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SEKME 4: MAAŞLAR & ACİL ÖDEMELER -->
+    <div id="tabContent-odemeler" class="tab-section hidden space-y-5">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden print-card">
+          <div class="px-4 sm:px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-rose-50/40">
+            <div class="flex items-center gap-2.5">
+              <div class="bg-rose-100 text-rose-600 p-2 rounded-xl">
+                <i data-lucide="alert-octagon" class="w-5 h-5"></i>
+              </div>
+              <div>
+                <h2 class="text-base font-bold text-slate-900">Yapılacak Acil Ödemeler</h2>
+                <p class="text-xs text-slate-500">Kira, fatura, vergi, SGK, araç gideri ve acil ödemeler</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="p-4 sm:p-5 space-y-4">
+            <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80 space-y-2.5 no-print">
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <input type="text" id="urgentTitleInput" placeholder="Ödeme Başlığı (Örn: Elektrik, SGK)"
+                  class="text-sm bg-white border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-rose-500" />
+                <input type="number" min="0" step="0.01" id="urgentAmountInput" placeholder="Tutar (₺)"
+                  class="text-sm bg-white border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-rose-500" />
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div class="flex items-center gap-1.5">
+                  <span class="text-xs text-slate-500 whitespace-nowrap">Son Gün:</span>
+                  <input type="date" id="urgentDueDateInput"
+                    class="w-full text-xs bg-white border border-slate-200 rounded-xl px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-rose-500" />
+                </div>
+                <select id="urgentStatusInput" class="text-xs font-semibold bg-white border border-slate-200 rounded-xl px-2.5 py-2">
+                  <option value="hatirlat">🔔 Hatırlat (Bekliyor)</option>
+                  <option value="eksik">❌ Eksik / Gecikti</option>
+                  <option value="tamamlandi">✅ Ödendi (Tamamlandı)</option>
+                </select>
+              </div>
+              <div class="flex items-center justify-between gap-2">
+                <input type="text" id="urgentNoteInput" placeholder="Şube / IBAN / Açıklama..."
+                  class="flex-1 text-xs bg-white border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none"
+                  onkeydown="if(event.key==='Enter') addUrgentPayment()" />
+                <button onclick="addUrgentPayment()" class="bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold px-4 py-2.5 rounded-xl transition flex items-center gap-1 whitespace-nowrap">
+                  <i data-lucide="plus" class="w-4 h-4"></i> Ekle
+                </button>
+              </div>
+            </div>
+
+            <div id="urgentPaymentsContainer" class="space-y-2.5"></div>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden print-card">
+          <div class="px-4 sm:px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-emerald-50/40">
+            <div class="flex items-center gap-2.5">
+              <div class="bg-emerald-100 text-emerald-600 p-2 rounded-xl">
+                <i data-lucide="banknote" class="w-5 h-5"></i>
+              </div>
+              <div>
+                <h2 class="text-base font-bold text-slate-900">Maaş Ödeme Tarihleri & Personel</h2>
+                <p class="text-xs text-slate-500">Personel maaş günleri, avans ve ödeme durumları</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="p-4 sm:p-5 space-y-4">
+            <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80 space-y-2.5 no-print">
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <input type="text" id="salaryNameInput" placeholder="Personel Adı / Şubesi"
+                  class="text-sm bg-white border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                <input type="number" min="0" step="0.01" id="salaryAmountInput" placeholder="Maaş Tutarı (₺)"
+                  class="text-sm bg-white border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div class="flex items-center gap-1.5">
+                  <span class="text-xs text-slate-500 whitespace-nowrap">Ödeme Günü:</span>
+                  <input type="date" id="salaryDateInput"
+                    class="w-full text-xs bg-white border border-slate-200 rounded-xl px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                </div>
+                <select id="salaryStatusInput" class="text-xs font-semibold bg-white border border-slate-200 rounded-xl px-2.5 py-2">
+                  <option value="hatirlat">🔔 Hatırlat (Ödenecek)</option>
+                  <option value="eksik">❌ Eksik / Kısmi Ödeme</option>
+                  <option value="tamamlandi">✅ Maaş Ödendi</option>
+                </select>
+              </div>
+              <div class="flex items-center justify-between gap-2">
+                <input type="text" id="salaryNoteInput" placeholder="Avans / Mesai / Ek Not..."
+                  class="flex-1 text-xs bg-white border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none"
+                  onkeydown="if(event.key==='Enter') addSalaryItem()" />
+                <button onclick="addSalaryItem()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-4 py-2.5 rounded-xl transition flex items-center gap-1 whitespace-nowrap">
+                  <i data-lucide="plus" class="w-4 h-4"></i> Personel Ekle
+                </button>
+              </div>
+            </div>
+
+            <div id="salaryListContainer" class="space-y-2.5"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SEKME 5: GENEL NOTLAR & GEÇMİŞ ÖZETİ -->
+    <div id="tabContent-notlar" class="tab-section hidden space-y-5">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        <div class="lg:col-span-7 bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden print-card">
+          <div class="px-4 sm:px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+            <div class="flex items-center gap-2.5">
+              <div class="bg-indigo-100 text-indigo-600 p-2 rounded-xl">
+                <i data-lucide="clipboard-list" class="w-5 h-5"></i>
+              </div>
+              <div>
+                <h2 class="text-base font-bold text-slate-900">Kurum İçi Notlar & Takip Maddeleri</h2>
+                <p class="text-xs text-slate-500">Veli görüşmeleri, evrak eksikleri, bakım/onarım ve hatırlatmalar</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="p-4 sm:p-5 space-y-4">
+            <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80 space-y-2.5 no-print">
+              <div class="flex flex-col sm:flex-row gap-2">
+                <select id="newNoteCategory" class="text-xs font-semibold bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                  <option value="Genel">📌 Genel Not</option>
+                  <option value="2. Şube">🏢 2. Şube Notu</option>
+                  <option value="Öğrenci/Veli">👨‍👩‍👧 Öğrenci / Veli</option>
+                  <option value="Araç/Servis">🚐 Araç / Servis</option>
+                  <option value="Evrak/MEB">📁 Evrak / Resmi İşlem</option>
+                  <option value="Bakım/Alım">🛠️ Bakım / Malzeme Alımı</option>
+                  <option value="Personel">👔 Personel</option>
+                </select>
+                <input type="text" id="newNoteText" placeholder="Notunuzu veya yapılacak işi yazın..."
+                  class="flex-1 text-sm bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  onkeydown="if(event.key==='Enter') addNoteItem()" />
+              </div>
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <select id="newNoteStatus" class="text-xs font-semibold bg-white border border-slate-200 rounded-lg px-2.5 py-1.5">
+                    <option value="hatirlat">🔔 Hatırlat</option>
+                    <option value="eksik">❌ Eksik</option>
+                    <option value="tamamlandi">✅ Tamamlandı</option>
+                  </select>
+                  <label class="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer">
+                    <input type="checkbox" id="newNotePin" class="rounded text-indigo-600 focus:ring-indigo-500" checked />
+                    <span>Her gün sabitle</span>
+                  </label>
+                </div>
+                <button onclick="addNoteItem()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-4 py-2 rounded-xl transition flex items-center gap-1.5">
+                  <i data-lucide="plus-circle" class="w-4 h-4"></i> Not Ekle
+                </button>
+              </div>
+            </div>
+
+            <div id="notesListContainer" class="space-y-2.5"></div>
+          </div>
+        </div>
+
+        <div class="lg:col-span-5 bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden print-card self-start">
+          <div class="px-4 sm:px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+            <div class="flex items-center gap-2.5">
+              <div class="bg-slate-200 text-slate-700 p-2 rounded-xl">
+                <i data-lucide="history" class="w-5 h-5"></i>
+              </div>
+              <div>
+                <h2 class="text-base font-bold text-slate-900">Son Kaydedilen Günler</h2>
+                <p class="text-xs text-slate-500">Güne dokunarak o günün kaydını açın</p>
+              </div>
+            </div>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr class="bg-slate-50 text-slate-600 border-b border-slate-200">
+                  <th class="py-2.5 px-3 font-semibold">Tarih</th>
+                  <th class="py-2.5 px-2 font-semibold text-center">Merkez</th>
+                  <th class="py-2.5 px-2 font-semibold text-center">2.Şube</th>
+                  <th class="py-2.5 px-2 font-semibold text-center">Temizlik</th>
+                  <th class="py-2.5 px-2 font-semibold text-center">2.Şube Soru</th>
+                </tr>
+              </thead>
+              <tbody id="historyTableBody" class="divide-y divide-slate-100"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- MOBİL ALT SEKME MENÜSÜ -->
+  <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-slate-900 text-slate-300 border-t border-slate-800 z-40 px-1 py-1.5 no-print shadow-2xl">
+    <div class="grid grid-cols-5 gap-1">
+      <button onclick="switchTab('seans')" id="mobTab-seans" class="flex flex-col items-center justify-center py-1.5 rounded-xl transition">
+        <i data-lucide="bar-chart-3" class="w-5 h-5"></i>
+        <span class="text-[10px] font-semibold mt-0.5">Seans/Özet</span>
+      </button>
+
+      <button onclick="switchTab('sube2')" id="mobTab-sube2" class="relative flex flex-col items-center justify-center py-1.5 rounded-xl transition">
+        <i data-lucide="git-branch" class="w-5 h-5"></i>
+        <span class="text-[10px] font-semibold mt-0.5">2. Şube</span>
+        <span id="mobBadge-sube2" class="absolute top-1 right-2 bg-purple-500 text-white text-[9px] font-bold px-1.5 rounded-full">0</span>
+      </button>
+
+      <button onclick="switchTab('temizlik')" id="mobTab-temizlik" class="relative flex flex-col items-center justify-center py-1.5 rounded-xl transition">
+        <i data-lucide="sparkles" class="w-5 h-5"></i>
+        <span class="text-[10px] font-semibold mt-0.5">Temizlik</span>
+        <span id="mobBadge-temizlik" class="absolute top-1 right-2 bg-sky-500 text-white text-[9px] font-bold px-1.5 rounded-full">0</span>
+      </button>
+
+      <button onclick="switchTab('odemeler')" id="mobTab-odemeler" class="relative flex flex-col items-center justify-center py-1.5 rounded-xl transition">
+        <i data-lucide="wallet" class="w-5 h-5"></i>
+        <span class="text-[10px] font-semibold mt-0.5">Ödemeler</span>
+        <span id="mobBadge-odemeler" class="absolute top-1 right-2 bg-rose-500 text-white text-[9px] font-bold px-1.5 rounded-full">0</span>
+      </button>
+
+      <button onclick="switchTab('notlar')" id="mobTab-notlar" class="relative flex flex-col items-center justify-center py-1.5 rounded-xl transition">
+        <i data-lucide="clipboard-list" class="w-5 h-5"></i>
+        <span class="text-[10px] font-semibold mt-0.5">Notlar</span>
+        <span id="mobBadge-notlar" class="absolute top-1 right-2 bg-amber-500 text-white text-[9px] font-bold px-1.5 rounded-full">0</span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- FIREBASE SENKRONİZASYON & YEDEKLEME MODALI -->
+  <div id="cloudModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden items-center justify-center p-4 no-print">
+    <div class="bg-white rounded-2xl max-w-2xl w-full shadow-2xl border border-slate-200 overflow-hidden max-h-[90vh] flex flex-col">
+      <div class="px-5 py-4 bg-slate-900 text-white flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <i data-lucide="flame" class="w-5 h-5 text-amber-400"></i>
+          <h3 class="text-sm sm:text-base font-bold">Firebase Bulut Senkronizasyon & Kurum Ayarları</h3>
+        </div>
+        <button onclick="closeCloudModal()" class="text-slate-400 hover:text-white p-1">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="p-5 overflow-y-auto space-y-5 text-sm">
+        <!-- Firebase Canlı Durum Bilgisi -->
+        <div class="bg-indigo-50/80 p-4 rounded-xl border border-indigo-200 space-y-2.5">
+          <div class="flex items-center justify-between">
+            <h4 class="font-bold text-indigo-950 flex items-center gap-2">
+              <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-600"></i>
+              Resmi Firebase Web SDK Bağlantısı (kurum-takip-8542e)
+            </h4>
+            <span id="modalFirebaseBadge" class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800">Aktif</span>
+          </div>
+          <p class="text-xs text-indigo-900 leading-relaxed">
+            Uygulamanız doğrudan <strong>kurum-takip-8542e</strong> Firebase projenize bağlıdır. Telefonunuzdan veya bilgisayarınızdan girdiğiniz her veri gerçek zamanlı olarak tüm cihazlarınızda anında eşitlenir.
+          </p>
+          <div id="firebaseErrorHelp" class="hidden bg-rose-50 border border-rose-200 text-rose-900 p-3 rounded-xl text-xs space-y-1">
+            <div class="font-bold">⚠️ Firebase Veritabanı İzin / Kurulum Uyarısı:</div>
+            <p id="firebaseErrorDetail"></p>
+            <p class="text-[11px] text-rose-700 mt-1">
+              Not: Firebase Console &rarr; <strong>Firestore Database</strong> (veya <strong>Realtime Database</strong>) bölümünden veritabanını oluşturup <em>Rules (Kurallar)</em> kısmında okuma/yazma iznini (<code>allow read, write: if true;</code> veya <code>.read: true, .write: true</code>) açtığınızdan emin olun.
+            </p>
+          </div>
+          <div class="flex flex-wrap gap-2 pt-1">
+            <button onclick="pushToFirebase(true)" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-3.5 py-2 rounded-xl flex items-center gap-1.5">
+              <i data-lucide="upload-cloud" class="w-4 h-4"></i> Şimdi Firebase'e Gönder
+            </button>
+            <button onclick="pullFromFirebase(true)" class="bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 text-xs font-semibold px-3.5 py-2 rounded-xl flex items-center gap-1.5">
+              <i data-lucide="download-cloud" class="w-4 h-4"></i> Firebase'den Şimdi Çek
+            </button>
+          </div>
+        </div>
+
+        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+          <div>
+            <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Merkez Kurum Başlığı</label>
+            <input type="text" id="institutionNameInput" placeholder="Merkez Kurum Adınız" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="block text-xs font-bold uppercase text-purple-700 mb-1">2. Şube Başlığı</label>
+            <input type="text" id="branch2NameInput" placeholder="Örn: 2. Şube Günlük Kontrol" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-sm" />
+          </div>
+          <button onclick="saveInstitutionName()" class="bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-xl text-xs font-semibold">Başlıkları Kaydet</button>
+        </div>
+
+        <div class="bg-emerald-50/70 p-4 rounded-xl border border-emerald-200 space-y-3">
+          <h4 class="font-bold text-emerald-950 flex items-center gap-2">
+            <i data-lucide="hard-drive-download" class="w-4 h-4 text-emerald-600"></i>
+            Cihaza Yedek Dosyası İndir / Geri Yükle
+          </h4>
+          <p class="text-xs text-emerald-800">
+            Firebase bulut senkronizasyonuna ek olarak istediğiniz zaman tüm verilerinizi <code>.json</code> dosyası olarak cihazınıza indirebilirsiniz.
+          </p>
+          <div class="flex flex-wrap gap-2">
+            <button onclick="downloadJsonBackup()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-4 py-2 rounded-xl flex items-center gap-1.5">
+              <i data-lucide="download" class="w-4 h-4"></i> Yedek İndir (.json)
+            </button>
+            <label class="bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300 text-xs font-semibold px-4 py-2 rounded-xl flex items-center gap-1.5 cursor-pointer">
+              <i data-lucide="upload" class="w-4 h-4"></i> Yedek Yükle
+              <input type="file" accept=".json" onchange="restoreJsonBackup(event)" class="hidden" />
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // =========================================================================
+    // 1. RESMİ FIREBASE WEB SDK YAPILANDIRMASI (DOĞRUDAN GÖMÜLÜ)
+    // =========================================================================
+    const firebaseConfig = {
+      apiKey: "AIzaSyBEvjD2-fmNq7CQHrS9poYYVOmE3dwTgBg",
+      authDomain: "kurum-takip-8542e.firebaseapp.com",
+      databaseURL: "https://kurum-takip-8542e-default-rtdb.firebaseio.com",
+      projectId: "kurum-takip-8542e",
+      storageBucket: "kurum-takip-8542e.firebasestorage.app",
+      messagingSenderId: "451967612522",
+      appId: "1:451967612522:web:bd5092c65f1a7735f0fc13"
+    };
+
+    let firebaseApp = null;
+    let firestoreDocRef = null;
+    let rtdbRef = null;
+    let activeFirebaseMode = null; // 'firestore' | 'rtdb'
+    let isApplyingRemoteUpdate = false;
+    let lastLocalTimestamp = 0;
+
+    try {
+      firebaseApp = firebase.initializeApp(firebaseConfig);
+      // Hem Cloud Firestore hem de Realtime Database referanslarını hazırla
+      // (Kullanıcı Firebase Console'da hangisini açtıysa otomatik olarak onunla çalışır)
+      try {
+        const db = firebase.firestore();
+        firestoreDocRef = db.collection('kurum_takip').doc('ana_veri');
+      } catch (e) {
+        console.warn('Firestore başlatılamadı:', e);
+      }
+      try {
+        const rtdb = firebase.database();
+        rtdbRef = rtdb.ref('kurum_takip/ana_veri');
+      } catch (e) {
+        console.warn('RTDB başlatılamadı:', e);
+      }
+    } catch (err) {
+      console.error('Firebase başlatma hatası:', err);
+    }
+
+    // =========================================================================
+    // 2. UYGULAMA VERİ MODELİ VE VARSAYILAN ŞABLONLAR
+    // =========================================================================
+    const STORAGE_KEY = 'KURUM_TAKIP_DATA_V1';
+    const ACTIVE_TAB_KEY = 'KURUM_TAKIP_ACTIVE_TAB';
+
+    const DEFAULT_CLEANING_AREAS = [
+      { id: 'wc-ogrenci', name: 'Öğrenci / Koridor WC Temizliği' },
+      { id: 'wc-personel', name: 'Personel & Veli WC Temizliği' },
+      { id: 'bireysel-odalar', name: 'Bireysel Eğitim Odaları (Havalandırma & Yüzey)' },
+      { id: 'grup-odalari', name: 'Grup Eğitim & Oyun Odaları' },
+      { id: 'fizyo-duyu', name: 'Fizyoterapi / Duyu Bütünleme Salonu' },
+      { id: 'bekleme-koridor', name: 'Veli Bekleme Salonu & Koridorlar' },
+      { id: 'idare-mutfak', name: 'İdare Odası & Mutfak / Çay Ocağı' }
+    ];
+
+    const DEFAULT_BRANCH2_QUESTIONS = [
+      { id: 'b2-gorusme', category: 'Görüşme', question: 'Bugün görüşmem gereken kimse (veli, personel, kurum) var mı? Görüşme yapıldı mı?' },
+      { id: 'b2-arac', category: 'Araç/Servis', question: 'Araçlar / servisler ile ilgili herhangi bir sıkıntı, arıza, muayene veya gecikme var mı?' },
+      { id: 'b2-seans', category: 'Seans/Öğrenci', question: 'Günlük seans sayısı ile ilgili sıkıntı, toplu iptal veya devamsızlık var mı?' },
+      { id: 'b2-personel', category: 'Personel', question: '2. Şube personel devam durumu, izin/rapor veya ders saatlerinde aksama var mı?' },
+      { id: 'b2-temizlik-kamera', category: 'Genel Kontrol', question: '2. Şube temizlik (WC/Odalar) ve kamera kayıt kontrolü yapıldı mı?' },
+      { id: 'b2-odeme-evrak', category: 'Genel Kontrol', question: '2. Şubede acil ödeme, fatura veya imza/evrak eksiği var mı?' }
+    ];
+
+    let appState = {
+      institutionName: 'Kurum Kontrol & Takip Sistemi',
+      branch2Name: '2. Şube Günlük Kontrol & Sorulacak Sorular',
+      updatedAt: 0,
+      cleaningTemplate: [...DEFAULT_CLEANING_AREAS],
+      branch2Template: [...DEFAULT_BRANCH2_QUESTIONS],
+      days: {},
+      salaries: [],
+      urgentPayments: [],
+      pinnedNotes: []
+    };
+
+    let currentDate = getTodayStr();
+    let currentFilter = 'all';
+    let currentTab = localStorage.getItem(ACTIVE_TAB_KEY) || 'seans';
+
+    function getTodayStr() {
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = String(now.getMonth() + 1).padStart(2, '0');
+      const d = String(now.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+
+    function getTimeStr() {
+      const now = new Date();
+      return now.toTimeString().slice(0, 8);
+    }
+
+    // --- SEKME GEÇİŞ SİSTEMİ ---
+    function switchTab(tabName) {
+      currentTab = tabName;
+      localStorage.setItem(ACTIVE_TAB_KEY, tabName);
+
+      const allTabs = ['seans', 'sube2', 'temizlik', 'odemeler', 'notlar'];
+      allTabs.forEach(t => {
+        const sec = document.getElementById(`tabContent-${t}`);
+        if (!sec) return;
+        if (tabName === 'tumu' || tabName === t) {
+          sec.classList.remove('hidden');
+        } else {
+          sec.classList.add('hidden');
+        }
+      });
+
+      [...allTabs, 'tumu'].forEach(t => {
+        const dBtn = document.getElementById(`deskTab-${t}`);
+        if (dBtn) {
+          if (t === tabName) {
+            dBtn.className = 'tab-btn px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 bg-indigo-600 text-white shadow-sm';
+          } else {
+            dBtn.className = 'tab-btn px-3.5 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-2 bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white';
+          }
+        }
+      });
+
+      allTabs.forEach(t => {
+        const mBtn = document.getElementById(`mobTab-${t}`);
+        if (mBtn) {
+          if (t === tabName) {
+            mBtn.className = 'relative flex flex-col items-center justify-center py-1.5 rounded-xl transition bg-indigo-600 text-white shadow-inner';
+          } else {
+            mBtn.className = 'relative flex flex-col items-center justify-center py-1.5 rounded-xl transition text-slate-400 hover:text-white';
+          }
+        }
+      });
+
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function createEmptyDay(dateStr) {
+      let lastStudentCount = 0;
+      let lastBranch2StudentCount = 0;
+      const sortedDates = Object.keys(appState.days || {}).sort();
+      for (let i = sortedDates.length - 1; i >= 0; i--) {
+        if (sortedDates[i] < dateStr) {
+          if (!lastStudentCount && appState.days[sortedDates[i]]?.studentCount > 0) {
+            lastStudentCount = appState.days[sortedDates[i]].studentCount;
+          }
+          if (!lastBranch2StudentCount && appState.days[sortedDates[i]]?.branch2Students > 0) {
+            lastBranch2StudentCount = appState.days[sortedDates[i]].branch2Students;
+          }
+        }
+      }
+
+      const cleaningMap = {};
+      (appState.cleaningTemplate || []).forEach(area => {
+        cleaningMap[area.id] = { status: 'hatirlat', note: '' };
+      });
+
+      const branch2ChecksMap = {};
+      (appState.branch2Template || []).forEach(q => {
+        branch2ChecksMap[q.id] = { status: 'hatirlat', answer: '' };
+      });
+
+      return {
+        date: dateStr,
+        dailySessions: 0,
+        indSessions: 0,
+        grpSessions: 0,
+        studentCount: lastStudentCount,
+        attendingStudents: 0,
+        makeupStudents: 0,
+        branch2Sessions: 0,
+        branch2Students: lastBranch2StudentCount,
+        cleaning: cleaningMap,
+        branch2Checks: branch2ChecksMap,
+        camera: { status: 'hatirlat', device: '', range: '', health: '', note: '' },
+        dailyNotes: []
+      };
+    }
+
+    function ensureDayExists(dateStr) {
+      if (!appState.days) appState.days = {};
+      if (!appState.cleaningTemplate || appState.cleaningTemplate.length === 0) {
+        appState.cleaningTemplate = [...DEFAULT_CLEANING_AREAS];
+      }
+      if (!appState.branch2Template || appState.branch2Template.length === 0) {
+        appState.branch2Template = [...DEFAULT_BRANCH2_QUESTIONS];
+      }
+      if (!appState.salaries) appState.salaries = [];
+      if (!appState.urgentPayments) appState.urgentPayments = [];
+      if (!appState.pinnedNotes) appState.pinnedNotes = [];
+
+      if (!appState.days[dateStr]) {
+        appState.days[dateStr] = createEmptyDay(dateStr);
+      } else {
+        const d = appState.days[dateStr];
+        if (!d.cleaning) d.cleaning = {};
+        appState.cleaningTemplate.forEach(area => {
+          if (!d.cleaning[area.id]) d.cleaning[area.id] = { status: 'hatirlat', note: '' };
+        });
+        if (!d.branch2Checks) d.branch2Checks = {};
+        appState.branch2Template.forEach(q => {
+          if (!d.branch2Checks[q.id]) d.branch2Checks[q.id] = { status: 'hatirlat', answer: '' };
+        });
+        if (!d.dailyNotes) d.dailyNotes = [];
+        if (!d.camera) d.camera = { status: 'hatirlat', device: '', range: '', health: '', note: '' };
+      }
+      return appState.days[dateStr];
+    }
+
+    // =========================================================================
+    // 3. YEREL + FIREBASE GERÇEK ZAMANLI KAYIT VE SENKRONİZASYON
+    // =========================================================================
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          appState = { ...appState, ...parsed };
+        } else {
+          seedInitialSampleData();
+        }
+      } catch (e) {
+        console.error('Yerel veri okuma hatası:', e);
+      }
+      ensureDayExists(currentDate);
+    }
+
+    function seedInitialSampleData() {
+      const today = getTodayStr();
+      appState.days[today] = createEmptyDay(today);
+      appState.urgentPayments = [
+        { id: 'urg-1', title: 'Kurum Kira / Faturalar Kontrolü', amount: 0, dueDate: today, status: 'hatirlat', note: 'Fatura son ödeme tarihlerini kontrol et' }
+      ];
+      appState.salaries = [
+        { id: 'sal-1', name: 'Örnek: Eğitim Personeli Maaş Ödemesi', amount: 0, dueDate: today, status: 'hatirlat', note: 'Maaş günü kontrolü' }
+      ];
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
+    }
+
+    let firebaseSyncTimer = null;
+    function saveState(triggerCloud = true) {
+      try {
+        const nowTs = Date.now();
+        appState.updatedAt = nowTs;
+        lastLocalTimestamp = nowTs;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
+
+        if (triggerCloud && !isApplyingRemoteUpdate) {
+          updateSyncIndicator('syncing', 'Firebase buluta kaydediliyor...');
+          clearTimeout(firebaseSyncTimer);
+          firebaseSyncTimer = setTimeout(() => {
+            pushToFirebase(false);
+          }, 400);
+        }
+      } catch (e) {
+        console.error('Kayıt hatası:', e);
+      }
+    }
+
+    function manualSaveAction() {
+      saveState(true);
+      pushToFirebase(true);
+    }
+
+    // Firebase'e Veri Yazma (Önce Firestore dener, yoksa/hata verirse Realtime Database'e yazar)
+    async function pushToFirebase(showToastOnSuccess = false) {
+      const cleanPayload = JSON.parse(JSON.stringify(appState));
+
+      // 1. Önce Firestore'u dene
+      if (firestoreDocRef && activeFirebaseMode !== 'rtdb') {
+        try {
+          await firestoreDocRef.set(cleanPayload);
+          activeFirebaseMode = 'firestore';
+          hideFirebaseErrorHelp();
+          updateSyncIndicator('cloud-ok', `Firebase Senkronize (${getTimeStr()})`);
+          if (showToastOnSuccess) showSaveToast('Tüm veriler Firebase Buluta kaydedildi! (' + getTimeStr() + ')');
+          return;
+        } catch (fsErr) {
+          console.warn('Firestore yazma uyarısı, Realtime DB deneniyor:', fsErr);
+          // Eğer Firestore aktif değilse RTDB'ye geç
+          if (rtdbRef) {
+            try {
+              await rtdbRef.set(cleanPayload);
+              activeFirebaseMode = 'rtdb';
+              hideFirebaseErrorHelp();
+              updateSyncIndicator('cloud-ok', `Firebase RTDB Senkronize (${getTimeStr()})`);
+              if (showToastOnSuccess) showSaveToast('Tüm veriler Firebase Buluta kaydedildi! (' + getTimeStr() + ')');
+              return;
+            } catch (rtdbErr) {
+              handleFirebaseError(fsErr);
+            }
+          } else {
+            handleFirebaseError(fsErr);
+          }
+        }
+      } else if (rtdbRef) {
+        try {
+          await rtdbRef.set(cleanPayload);
+          activeFirebaseMode = 'rtdb';
+          hideFirebaseErrorHelp();
+          updateSyncIndicator('cloud-ok', `Firebase RTDB Senkronize (${getTimeStr()})`);
+          if (showToastOnSuccess) showSaveToast('Tüm veriler Firebase Buluta kaydedildi! (' + getTimeStr() + ')');
+        } catch (rtdbErr) {
+          handleFirebaseError(rtdbErr);
+        }
+      }
+    }
+
+    // Uygulama açıldığında veya manuel istendiğinde Firebase'den verileri çek ve canlı dinleyiciyi (onSnapshot / onValue) başlat
+    async function initFirebaseRealtimeSync() {
+      updateSyncIndicator('syncing', 'Firebase buluttan veriler çekiliyor...');
+
+      // 1. Firestore Gerçek Zamanlı Dinleyici
+      if (firestoreDocRef) {
+        firestoreDocRef.onSnapshot(
+          (docSnap) => {
+            activeFirebaseMode = 'firestore';
+            hideFirebaseErrorHelp();
+            if (docSnap.exists) {
+              const remoteData = docSnap.data();
+              applyRemoteStateIfNewer(remoteData);
+              updateSyncIndicator('cloud-ok', `Firebase Canlı Senkronize (${getTimeStr()})`);
+            } else {
+              // Bulutta henüz hiç kayıt yoksa mevcut veriyi ilk kez buluta yaz
+              pushToFirebase(false);
+            }
+          },
+          (err) => {
+            console.warn('Firestore dinleyici uyarısı, RTDB deneniyor:', err);
+            initRtdbListenerFallback(err);
+          }
+        );
+      } else {
+        initRtdbListenerFallback(new Error('Firestore başlatılamadı'));
+      }
+    }
+
+    function initRtdbListenerFallback(previousError) {
+      if (!rtdbRef) {
+        handleFirebaseError(previousError);
+        return;
+      }
+      rtdbRef.on(
+        'value',
+        (snapshot) => {
+          activeFirebaseMode = 'rtdb';
+          hideFirebaseErrorHelp();
+          const remoteData = snapshot.val();
+          if (remoteData && remoteData.days) {
+            applyRemoteStateIfNewer(remoteData);
+            updateSyncIndicator('cloud-ok', `Firebase Canlı Senkronize (${getTimeStr()})`);
+          } else {
+            pushToFirebase(false);
+          }
+        },
+        (rtdbErr) => {
+          console.error('RTDB dinleyici hatası:', rtdbErr);
+          handleFirebaseError(previousError || rtdbErr);
+        }
+      );
+    }
+
+    async function pullFromFirebase(showNotification = false) {
+      updateSyncIndicator('syncing', 'Firebase buluttan çekiliyor...');
+      try {
+        if (firestoreDocRef && activeFirebaseMode !== 'rtdb') {
+          const snap = await firestoreDocRef.get();
+          if (snap.exists) {
+            applyRemoteStateIfNewer(snap.data(), true);
+            updateSyncIndicator('cloud-ok', `Firebase'den Güncellendi (${getTimeStr()})`);
+            if (showNotification) showSaveToast('Firebase buluttaki güncel veriler yüklendi!');
+            return;
+          }
+        }
+        if (rtdbRef) {
+          const snap = await rtdbRef.once('value');
+          const val = snap.val();
+          if (val && val.days) {
+            applyRemoteStateIfNewer(val, true);
+            updateSyncIndicator('cloud-ok', `Firebase'den Güncellendi (${getTimeStr()})`);
+            if (showNotification) showSaveToast('Firebase buluttaki güncel veriler yüklendi!');
+            return;
+          }
+        }
+        if (showNotification) showSaveToast('Bulutta henüz veri yok, mevcut verileriniz gönderiliyor...');
+        await pushToFirebase(showNotification);
+      } catch (err) {
+        handleFirebaseError(err);
+        if (showNotification) alert('Firebase bağlantı uyarısı: ' + err.message);
+      }
+    }
+
+    function applyRemoteStateIfNewer(remoteData, forceApply = false) {
+      if (!remoteData || !remoteData.days) return;
+      const remoteTs = Number(remoteData.updatedAt || 0);
+
+      // Kendi gönderdiğimiz değişikliği tekrar üstüne yazıp input odağını bozmamak için kontrol
+      if (!forceApply && remoteTs > 0 && remoteTs === lastLocalTimestamp) {
+        return;
+      }
+
+      isApplyingRemoteUpdate = true;
+      appState = {
+        ...appState,
+        ...remoteData
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
+      ensureDayExists(currentDate);
+      renderAll();
+      isApplyingRemoteUpdate = false;
+    }
+
+    function handleFirebaseError(err) {
+      console.error('Firebase hatası:', err);
+      updateSyncIndicator('error', `Cihaza Kaydedildi (Firebase İzni Bekleniyor)`);
+      const badge = document.getElementById('modalFirebaseBadge');
+      const helpBox = document.getElementById('firebaseErrorHelp');
+      const detail = document.getElementById('firebaseErrorDetail');
+      if (badge) {
+        badge.textContent = 'İzin / Kurulum Gerekli';
+        badge.className = 'text-xs font-bold px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-800';
+      }
+      if (helpBox && detail) {
+        helpBox.classList.remove('hidden');
+        detail.textContent = `Hata Detayı: ${err?.message || 'Veritabanı erişim hatası'}`;
+      }
+    }
+
+    function hideFirebaseErrorHelp() {
+      const badge = document.getElementById('modalFirebaseBadge');
+      const helpBox = document.getElementById('firebaseErrorHelp');
+      if (badge) {
+        badge.textContent = 'Canlı Senkronize';
+        badge.className = 'text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800';
+      }
+      if (helpBox) {
+        helpBox.classList.add('hidden');
+      }
+    }
+
+    let toastTimeout = null;
+    function showSaveToast(msg) {
+      const toast = document.getElementById('saveToast');
+      const text = document.getElementById('saveToastText');
+      if (!toast || !text) return;
+      text.textContent = msg;
+      toast.classList.remove('hidden');
+      toast.classList.add('flex');
+      clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => {
+        toast.classList.add('hidden');
+        toast.classList.remove('flex');
+      }, 2500);
+    }
+
+    function updateSyncIndicator(state, message) {
+      const dot = document.getElementById('syncIndicator');
+      const text = document.getElementById('syncStatusText');
+      if (!dot || !text) return;
+
+      if (state === 'syncing') {
+        dot.className = 'w-2 h-2 rounded-full bg-amber-400 animate-ping inline-block shrink-0';
+        text.textContent = message || 'Firebase ile eşitleniyor...';
+      } else if (state === 'cloud-ok') {
+        dot.className = 'w-2 h-2 rounded-full bg-emerald-400 inline-block shrink-0';
+        text.textContent = message || `Firebase Senkronize (${getTimeStr()})`;
+      } else if (state === 'error') {
+        dot.className = 'w-2 h-2 rounded-full bg-rose-400 inline-block shrink-0';
+        text.textContent = message || 'Cihaza Kaydedildi (Bulut Uyarısı)';
+      } else {
+        dot.className = 'w-2 h-2 rounded-full bg-emerald-400 inline-block shrink-0';
+        text.textContent = message || `Kaydedildi (${getTimeStr()})`;
+      }
+    }
+
+    // =========================================================================
+    // 4. TARİH, FİLTRE VE VERİ GÜNCELLEME FONKSİYONLARI
+    // =========================================================================
+    function onDateChange(val) {
+      if (!val) return;
+      currentDate = val;
+      const monthInput = document.getElementById('analyticsMonthInput');
+      if (monthInput) monthInput.value = currentDate.slice(0, 7);
+      ensureDayExists(currentDate);
+      renderAll();
+    }
+
+    function changeDate(offsetDays) {
+      const parts = currentDate.split('-').map(Number);
+      const dt = new Date(parts[0], parts[1] - 1, parts[2]);
+      dt.setDate(dt.getDate() + offsetDays);
+      const y = dt.getFullYear();
+      const m = String(dt.getMonth() + 1).padStart(2, '0');
+      const d = String(dt.getDate()).padStart(2, '0');
+      currentDate = `${y}-${m}-${d}`;
+      const monthInput = document.getElementById('analyticsMonthInput');
+      if (monthInput) monthInput.value = currentDate.slice(0, 7);
+      ensureDayExists(currentDate);
+      renderAll();
+    }
+
+    function goToToday() {
+      currentDate = getTodayStr();
+      const monthInput = document.getElementById('analyticsMonthInput');
+      if (monthInput) monthInput.value = currentDate.slice(0, 7);
+      ensureDayExists(currentDate);
+      renderAll();
+    }
+
+    function formatDisplayDate(dateStr) {
+      if (!dateStr) return '-';
+      const parts = dateStr.split('-');
+      if (parts.length !== 3) return dateStr;
+      return `${parts[2]}.${parts[1]}.${parts[0]}`;
+    }
+
+    function formatMonthName(yyyyMm) {
+      if (!yyyyMm) return '';
+      const [y, m] = yyyyMm.split('-').map(Number);
+      const months = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+      return `${months[(m || 1) - 1]} ${y}`;
+    }
+
+    function setFilterStatus(status) {
+      currentFilter = status;
+      ['all', 'tamamlandi', 'eksik', 'hatirlat'].forEach(st => {
+        const btn = document.getElementById(`filterBtn-${st}`);
+        if (!btn) return;
+        if (st === status) {
+          btn.className = 'text-[11px] font-bold px-2.5 py-1 rounded-lg bg-white text-slate-900 shrink-0 flex items-center gap-1 shadow-xs';
+        } else {
+          if (st === 'all') btn.className = 'text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 shrink-0';
+          if (st === 'tamamlandi') btn.className = 'text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-slate-800 text-emerald-300 hover:bg-slate-700 shrink-0 flex items-center gap-1';
+          if (st === 'eksik') btn.className = 'text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-slate-800 text-rose-300 hover:bg-slate-700 shrink-0 flex items-center gap-1';
+          if (st === 'hatirlat') btn.className = 'text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-slate-800 text-amber-300 hover:bg-slate-700 shrink-0 flex items-center gap-1';
+        }
+      });
+      renderAll();
+    }
+
+    function matchesFilter(status) {
+      if (currentFilter === 'all') return true;
+      return status === currentFilter;
+    }
+
+    function renderStatusButtons(currentStatus, onChangeJsExpr) {
+      const buttons = [
+        { key: 'tamamlandi', label: 'Tamamlandı', activeCls: 'bg-emerald-600 text-white border-emerald-600 shadow-xs', inactiveCls: 'bg-white text-slate-600 border-slate-200 hover:bg-emerald-50' },
+        { key: 'eksik', label: 'Eksik', activeCls: 'bg-red-600 text-white border-red-600 shadow-xs', inactiveCls: 'bg-white text-slate-600 border-slate-200 hover:bg-red-50' },
+        { key: 'hatirlat', label: 'Hatırlat', activeCls: 'bg-amber-500 text-white border-amber-500 shadow-xs', inactiveCls: 'bg-white text-slate-600 border-slate-200 hover:bg-amber-50' }
+      ];
+
+      return `<div class="inline-flex rounded-xl p-0.5 bg-slate-100 border border-slate-200 gap-1 no-print">
+        ${buttons.map(b => {
+          const isActive = currentStatus === b.key;
+          return `<button type="button" onclick="${onChangeJsExpr.replace('__STATUS__', b.key)}"
+            class="text-[11px] font-semibold px-2.5 py-1 rounded-lg border transition ${isActive ? b.activeCls : b.inactiveCls}">
+            ${b.label}
+          </button>`;
+        }).join('')}
+      </div>`;
+    }
+
+    function updateDailyMetrics() {
+      const day = ensureDayExists(currentDate);
+      day.dailySessions = parseInt(document.getElementById('dailySessionsInput').value, 10) || 0;
+      day.studentCount = parseInt(document.getElementById('studentCountInput').value, 10) || 0;
+      day.attendingStudents = parseInt(document.getElementById('attendingStudentsInput').value, 10) || 0;
+      day.makeupStudents = parseInt(document.getElementById('makeupStudentsInput').value, 10) || 0;
+      document.getElementById('mainStudentSummary').textContent = day.studentCount;
+      saveState();
+      renderSummaryCards();
+      renderMonthlyAnalytics();
+      renderHistoryTable();
+    }
+
+    function updateSubSessions() {
+      const day = ensureDayExists(currentDate);
+      day.indSessions = parseInt(document.getElementById('indSessionsInput').value, 10) || 0;
+      day.grpSessions = parseInt(document.getElementById('grpSessionsInput').value, 10) || 0;
+      day.dailySessions = day.indSessions + day.grpSessions;
+      document.getElementById('dailySessionsInput').value = day.dailySessions;
+      saveState();
+      renderSummaryCards();
+      renderMonthlyAnalytics();
+      renderHistoryTable();
+    }
+
+    function updateBranch2Metrics() {
+      const day = ensureDayExists(currentDate);
+      day.branch2Sessions = parseInt(document.getElementById('branch2SessionsInput').value, 10) || 0;
+      day.branch2Students = parseInt(document.getElementById('branch2StudentsInput').value, 10) || 0;
+      document.getElementById('branch2StudentSummary').textContent = day.branch2Students;
+      saveState();
+      renderSummaryCards();
+      renderMonthlyAnalytics();
+      renderHistoryTable();
+    }
+
+    function setBranch2CheckStatus(qId, status) {
+      const day = ensureDayExists(currentDate);
+      if (!day.branch2Checks[qId]) day.branch2Checks[qId] = { status: 'hatirlat', answer: '' };
+      day.branch2Checks[qId].status = status;
+      saveState();
+      renderAll();
+    }
+
+    function updateBranch2Answer(qId, val) {
+      const day = ensureDayExists(currentDate);
+      if (!day.branch2Checks[qId]) day.branch2Checks[qId] = { status: 'hatirlat', answer: '' };
+      day.branch2Checks[qId].answer = val;
+      saveState();
+    }
+
+    function markAllBranch2(status) {
+      const day = ensureDayExists(currentDate);
+      appState.branch2Template.forEach(q => {
+        if (!day.branch2Checks[q.id]) day.branch2Checks[q.id] = { status, answer: '' };
+        day.branch2Checks[q.id].status = status;
+      });
+      saveState();
+      renderAll();
+      showSaveToast('2. Şube maddeleri güncellendi ve kaydedildi!');
+    }
+
+    function addBranch2Question() {
+      const catEl = document.getElementById('newBranch2Category');
+      const inputEl = document.getElementById('newBranch2QuestionInput');
+      const question = (inputEl.value || '').trim();
+      if (!question) return;
+
+      const id = 'b2-' + Date.now();
+      appState.branch2Template.push({ id, category: catEl.value || 'Genel Kontrol', question });
+      ensureDayExists(currentDate);
+      inputEl.value = '';
+      saveState();
+      renderAll();
+      showSaveToast('Yeni 2. şube sorusu eklendi!');
+    }
+
+    function deleteBranch2Question(qId) {
+      if (!confirm('Bu soruyu 2. Şube kontrol listesinden kaldırmak istediğinize emin misiniz?')) return;
+      appState.branch2Template = appState.branch2Template.filter(q => q.id !== qId);
+      saveState();
+      renderAll();
+    }
+
+    function setCleaningStatus(areaId, status) {
+      const day = ensureDayExists(currentDate);
+      if (!day.cleaning[areaId]) day.cleaning[areaId] = { status: 'hatirlat', note: '' };
+      day.cleaning[areaId].status = status;
+      saveState();
+      renderAll();
+    }
+
+    function updateCleaningNote(areaId, val) {
+      const day = ensureDayExists(currentDate);
+      if (!day.cleaning[areaId]) day.cleaning[areaId] = { status: 'hatirlat', note: '' };
+      day.cleaning[areaId].note = val;
+      saveState();
+    }
+
+    function markAllCleaning(status) {
+      const day = ensureDayExists(currentDate);
+      appState.cleaningTemplate.forEach(area => {
+        if (!day.cleaning[area.id]) day.cleaning[area.id] = { status, note: '' };
+        day.cleaning[area.id].status = status;
+      });
+      saveState();
+      renderAll();
+      showSaveToast('Tüm temizlik alanları tamamlandı olarak kaydedildi!');
+    }
+
+    function addCleaningArea() {
+      const input = document.getElementById('newCleaningAreaInput');
+      const name = (input.value || '').trim();
+      if (!name) return;
+      const id = 'area-' + Date.now();
+      appState.cleaningTemplate.push({ id, name });
+      ensureDayExists(currentDate);
+      input.value = '';
+      saveState();
+      renderAll();
+      showSaveToast('Yeni temizlik alanı eklendi!');
+    }
+
+    function deleteCleaningArea(areaId) {
+      if (!confirm('Bu temizlik alanını listeden kaldırmak istediğinize emin misiniz?')) return;
+      appState.cleaningTemplate = appState.cleaningTemplate.filter(a => a.id !== areaId);
+      saveState();
+      renderAll();
+    }
+
+    function setCameraStatus(status) {
+      const day = ensureDayExists(currentDate);
+      day.camera.status = status;
+      saveState();
+      renderAll();
+    }
+
+    function updateCameraInfo() {
+      const day = ensureDayExists(currentDate);
+      day.camera.device = document.getElementById('camDeviceInput').value;
+      day.camera.range = document.getElementById('camRangeInput').value;
+      day.camera.health = document.getElementById('camHealthInput').value;
+      day.camera.note = document.getElementById('camNoteInput').value;
+      saveState();
+      renderSummaryCards();
+      renderHistoryTable();
+    }
+
+    function addNoteItem() {
+      const textInput = document.getElementById('newNoteText');
+      const catInput = document.getElementById('newNoteCategory');
+      const statusInput = document.getElementById('newNoteStatus');
+      const pinInput = document.getElementById('newNotePin');
+
+      const text = (textInput.value || '').trim();
+      if (!text) return;
+
+      const newItem = {
+        id: 'note-' + Date.now(),
+        category: catInput.value,
+        text,
+        status: statusInput.value,
+        createdAt: currentDate,
+        pinned: pinInput.checked
+      };
+
+      if (newItem.pinned) {
+        appState.pinnedNotes.unshift(newItem);
+      } else {
+        const day = ensureDayExists(currentDate);
+        day.dailyNotes.unshift(newItem);
+      }
+
+      textInput.value = '';
+      saveState();
+      renderAll();
+      showSaveToast('Not kaydedildi!');
+    }
+
+    function setNoteStatus(noteId, isPinned, status) {
+      if (isPinned) {
+        const item = appState.pinnedNotes.find(n => n.id === noteId);
+        if (item) item.status = status;
+      } else {
+        const day = ensureDayExists(currentDate);
+        const item = day.dailyNotes.find(n => n.id === noteId);
+        if (item) item.status = status;
+      }
+      saveState();
+      renderAll();
+    }
+
+    function deleteNoteItem(noteId, isPinned) {
+      if (isPinned) {
+        appState.pinnedNotes = appState.pinnedNotes.filter(n => n.id !== noteId);
+      } else {
+        const day = ensureDayExists(currentDate);
+        day.dailyNotes = day.dailyNotes.filter(n => n.id !== noteId);
+      }
+      saveState();
+      renderAll();
+    }
+
+    function addUrgentPayment() {
+      const titleEl = document.getElementById('urgentTitleInput');
+      const amountEl = document.getElementById('urgentAmountInput');
+      const dueEl = document.getElementById('urgentDueDateInput');
+      const statusEl = document.getElementById('urgentStatusInput');
+      const noteEl = document.getElementById('urgentNoteInput');
+
+      const title = (titleEl.value || '').trim();
+      if (!title) return;
+
+      appState.urgentPayments.unshift({
+        id: 'urg-' + Date.now(),
+        title,
+        amount: parseFloat(amountEl.value) || 0,
+        dueDate: dueEl.value || currentDate,
+        status: statusEl.value,
+        note: (noteEl.value || '').trim()
+      });
+
+      titleEl.value = '';
+      amountEl.value = '';
+      noteEl.value = '';
+      saveState();
+      renderAll();
+      showSaveToast('Acil ödeme kaydedildi!');
+    }
+
+    function setUrgentStatus(id, status) {
+      const item = appState.urgentPayments.find(u => u.id === id);
+      if (item) item.status = status;
+      saveState();
+      renderAll();
+    }
+
+    function deleteUrgentPayment(id) {
+      appState.urgentPayments = appState.urgentPayments.filter(u => u.id !== id);
+      saveState();
+      renderAll();
+    }
+
+    function addSalaryItem() {
+      const nameEl = document.getElementById('salaryNameInput');
+      const amountEl = document.getElementById('salaryAmountInput');
+      const dateEl = document.getElementById('salaryDateInput');
+      const statusEl = document.getElementById('salaryStatusInput');
+      const noteEl = document.getElementById('salaryNoteInput');
+
+      const name = (nameEl.value || '').trim();
+      if (!name) return;
+
+      appState.salaries.unshift({
+        id: 'sal-' + Date.now(),
+        name,
+        amount: parseFloat(amountEl.value) || 0,
+        dueDate: dateEl.value || currentDate,
+        status: statusEl.value,
+        note: (noteEl.value || '').trim()
+      });
+
+      nameEl.value = '';
+      amountEl.value = '';
+      noteEl.value = '';
+      saveState();
+      renderAll();
+      showSaveToast('Personel maaş kaydı eklendi!');
+    }
+
+    function setSalaryStatus(id, status) {
+      const item = appState.salaries.find(s => s.id === id);
+      if (item) item.status = status;
+      saveState();
+      renderAll();
+    }
+
+    function deleteSalaryItem(id) {
+      appState.salaries = appState.salaries.filter(s => s.id !== id);
+      saveState();
+      renderAll();
+    }
+
+    function copyFromPreviousDay() {
+      const parts = currentDate.split('-').map(Number);
+      const dt = new Date(parts[0], parts[1] - 1, parts[2]);
+      dt.setDate(dt.getDate() - 1);
+      const prevStr = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+
+      const prevDay = appState.days[prevStr];
+      if (!prevDay) {
+        alert(`${formatDisplayDate(prevStr)} tarihine ait kayıt bulunamadı.`);
+        return;
+      }
+
+      const day = ensureDayExists(currentDate);
+      if (prevDay.studentCount) day.studentCount = prevDay.studentCount;
+      if (prevDay.branch2Students) day.branch2Students = prevDay.branch2Students;
+      if (prevDay.camera?.device) day.camera.device = prevDay.camera.device;
+      if (prevDay.camera?.health) day.camera.health = prevDay.camera.health;
+
+      const unfinishedNotes = (prevDay.dailyNotes || []).filter(n => n.status !== 'tamamlandi');
+      unfinishedNotes.forEach(n => {
+        if (!day.dailyNotes.some(existing => existing.text === n.text)) {
+          day.dailyNotes.push({ ...n, id: 'note-' + Date.now() + Math.random() });
+        }
+      });
+
+      saveState();
+      renderAll();
+      showSaveToast('Dünkü veriler bugüne aktarıldı!');
+    }
+
+    // =========================================================================
+    // 5. EKRAN ÇİZİMİ (RENDER)
+    // =========================================================================
+    function renderAll() {
+      const day = ensureDayExists(currentDate);
+
+      document.getElementById('institutionNameDisplay').textContent = appState.institutionName || 'Kurum Kontrol & Takip';
+      document.getElementById('branch2TitleDisplay').textContent = appState.branch2Name || '2. Şube Günlük Kontrol & Sorulacak Sorular';
+      document.getElementById('selectedDateInput').value = currentDate;
+      document.getElementById('currentDateBadge1').textContent = formatDisplayDate(currentDate);
+
+      const monthInput = document.getElementById('analyticsMonthInput');
+      if (monthInput && !monthInput.value) {
+        monthInput.value = currentDate.slice(0, 7);
+      }
+
+      if (!document.getElementById('urgentDueDateInput').value) {
+        document.getElementById('urgentDueDateInput').value = currentDate;
+      }
+      if (!document.getElementById('salaryDateInput').value) {
+        document.getElementById('salaryDateInput').value = currentDate;
+      }
+
+      // Aktif olarak yazılan input'un imlecini bozmamak için kontrol ederek güncelle
+      setInputValueIfNotFocused('dailySessionsInput', day.dailySessions || 0);
+      setInputValueIfNotFocused('indSessionsInput', day.indSessions || 0);
+      setInputValueIfNotFocused('grpSessionsInput', day.grpSessions || 0);
+      setInputValueIfNotFocused('studentCountInput', day.studentCount || 0);
+      setInputValueIfNotFocused('attendingStudentsInput', day.attendingStudents || 0);
+      setInputValueIfNotFocused('makeupStudentsInput', day.makeupStudents || 0);
+      document.getElementById('mainStudentSummary').textContent = day.studentCount || 0;
+
+      setInputValueIfNotFocused('branch2SessionsInput', day.branch2Sessions || 0);
+      setInputValueIfNotFocused('branch2StudentsInput', day.branch2Students || 0);
+      document.getElementById('branch2StudentSummary').textContent = day.branch2Students || 0;
+
+      setInputValueIfNotFocused('camDeviceInput', day.camera?.device || '');
+      setInputValueIfNotFocused('camRangeInput', day.camera?.range || '');
+      setInputValueIfNotFocused('camHealthInput', day.camera?.health || '');
+      setInputValueIfNotFocused('camNoteInput', day.camera?.note || '');
+      document.getElementById('cameraStatusControl').innerHTML = renderStatusButtons(
+        day.camera?.status || 'hatirlat',
+        `setCameraStatus('__STATUS__')`
+      );
+
+      renderBranch2Questions(day);
+      renderCleaningList(day);
+      renderNotesList(day);
+      renderUrgentPayments();
+      renderSalaries();
+      renderSummaryCards();
+      renderMonthlyAnalytics();
+      renderHistoryTable();
+
+      lucide.createIcons();
+    }
+
+    function setInputValueIfNotFocused(id, val) {
+      const el = document.getElementById(id);
+      if (el && document.activeElement !== el) {
+        el.value = val;
+      }
+    }
+
+    function renderBranch2Questions(day) {
+      const container = document.getElementById('branch2QuestionsContainer');
+      let doneCount = 0;
+      const totalCount = appState.branch2Template.length;
+
+      const html = appState.branch2Template.map(q => {
+        const entry = (day.branch2Checks && day.branch2Checks[q.id]) || { status: 'hatirlat', answer: '' };
+        if (entry.status === 'tamamlandi') doneCount++;
+        if (!matchesFilter(entry.status)) return '';
+
+        const borderCls = entry.status === 'tamamlandi'
+          ? 'border-emerald-200 bg-emerald-50/30'
+          : entry.status === 'eksik'
+          ? 'border-red-300 bg-red-50/50'
+          : 'border-purple-200 bg-purple-50/30';
+
+        return `<div class="p-3.5 rounded-xl border ${borderCls} flex flex-col justify-between gap-2.5 transition">
+          <div class="space-y-1.5">
+            <div class="flex items-center justify-between gap-2 flex-wrap">
+              <span class="text-[11px] font-bold uppercase px-2 py-0.5 rounded bg-white border border-purple-200 text-purple-800">${escapeHtml(q.category || '2. Şube')}</span>
+              <div class="flex items-center gap-1">
+                ${renderStatusButtons(entry.status, `setBranch2CheckStatus('${q.id}', '__STATUS__')`)}
+                <button onclick="deleteBranch2Question('${q.id}')" class="text-slate-400 hover:text-red-600 p-1 no-print" title="Soruyu Kaldır">
+                  <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                </button>
+              </div>
+            </div>
+            <p class="text-sm font-semibold text-slate-900">${escapeHtml(q.question)}</p>
+          </div>
+          <div>
+            <input type="text" value="${escapeHtml(entry.answer || '')}"
+              oninput="updateBranch2Answer('${q.id}', this.value)"
+              placeholder="Cevap / Görüşme sonucu / Araç veya seans notu yazın..."
+              class="w-full text-xs bg-white border border-slate-200 rounded-lg px-2.5 py-2 text-slate-700 focus:outline-none focus:ring-1 focus:ring-purple-500" />
+          </div>
+        </div>`;
+      }).filter(Boolean).join('');
+
+      document.getElementById('branch2ProgressBadge').textContent = `${doneCount} / ${totalCount} Kontrol Edildi`;
+      container.innerHTML = html || `<div class="col-span-2 text-center py-4 text-xs text-slate-400">Seçili filtrede 2. şube maddesi bulunmuyor.</div>`;
+    }
+
+    function renderMonthlyAnalytics() {
+      const monthInput = document.getElementById('analyticsMonthInput');
+      const selectedMonth = (monthInput && monthInput.value) ? monthInput.value : currentDate.slice(0, 7);
+      document.getElementById('selectedMonthBadge').textContent = formatMonthName(selectedMonth);
+
+      const [yearNum, monthNum] = selectedMonth.split('-').map(Number);
+      const daysInMonth = new Date(yearNum, monthNum, 0).getDate();
+
+      let mainTotal = 0;
+      let mainIndTotal = 0;
+      let mainGrpTotal = 0;
+      let mainActiveDays = 0;
+      let maxSession = 0;
+      let minSession = null;
+      let maxSessionDate = '';
+
+      let b2Total = 0;
+      let b2ActiveDays = 0;
+      let combinedActiveDays = 0;
+
+      const dayRecords = [];
+
+      for (let d = 1; d <= daysInMonth; d++) {
+        const dStr = `${selectedMonth}-${String(d).padStart(2, '0')}`;
+        const rec = appState.days[dStr];
+        const mSes = Number(rec?.dailySessions || 0);
+        const b2Ses = Number(rec?.branch2Sessions || 0);
+
+        if (mSes > 0) {
+          mainTotal += mSes;
+          mainIndTotal += Number(rec?.indSessions || 0);
+          mainGrpTotal += Number(rec?.grpSessions || 0);
+          mainActiveDays++;
+          if (mSes > maxSession) {
+            maxSession = mSes;
+            maxSessionDate = `${d}.${String(monthNum).padStart(2, '0')}`;
+          }
+          if (minSession === null || mSes < minSession) {
+            minSession = mSes;
+          }
+        }
+
+        if (b2Ses > 0) {
+          b2Total += b2Ses;
+          b2ActiveDays++;
+        }
+
+        if (mSes > 0 || b2Ses > 0) {
+          combinedActiveDays++;
+        }
+
+        dayRecords.push({ dayNum: d, dateStr: dStr, mainSessions: mSes, b2Sessions: b2Ses });
+      }
+
+      const mainAvg = mainActiveDays > 0 ? (mainTotal / mainActiveDays).toFixed(1) : '0';
+      const b2Avg = b2ActiveDays > 0 ? (b2Total / b2ActiveDays).toFixed(1) : '0';
+      const combinedTotal = mainTotal + b2Total;
+      const combinedAvg = combinedActiveDays > 0 ? (combinedTotal / combinedActiveDays).toFixed(1) : '0';
+
+      document.getElementById('mStatMainTotal').textContent = mainTotal;
+      document.getElementById('mStatMainSub').textContent = `Bireysel: ${mainIndTotal} | Grup: ${mainGrpTotal}`;
+      document.getElementById('mStatMainAvg').textContent = mainAvg;
+      document.getElementById('mStatActiveDays').textContent = `${mainActiveDays} seans girilen gün`;
+      document.getElementById('mStatMinMax').textContent = `${maxSession} / ${minSession !== null ? minSession : 0}`;
+      document.getElementById('mStatMaxDate').textContent = maxSessionDate ? `En yoğun: ${maxSessionDate}` : 'Henüz veri yok';
+
+      document.getElementById('mStatBranch2Total').textContent = b2Total;
+      document.getElementById('mStatBranch2Days').textContent = `${b2ActiveDays} seans girilen gün`;
+      document.getElementById('mStatBranch2Avg').textContent = b2Avg;
+
+      document.getElementById('mStatCombinedTotal').textContent = combinedTotal;
+      document.getElementById('mStatCombinedAvg').textContent = `Genel Ort: ${combinedAvg} / gün`;
+
+      if (selectedMonth === currentDate.slice(0, 7)) {
+        document.getElementById('monthlySessionsTotal').textContent = mainTotal;
+        document.getElementById('monthlySessionsAvg').textContent = mainAvg;
+        document.getElementById('monthlyActiveDaysLabel').textContent = `(${mainActiveDays} aktif gün)`;
+      }
+
+      const maxCombined = Math.max(...dayRecords.map(r => r.mainSessions + r.b2Sessions), 10);
+      const barsContainer = document.getElementById('monthlyDailyBarsContainer');
+
+      barsContainer.innerHTML = dayRecords.map(r => {
+        const total = r.mainSessions + r.b2Sessions;
+        const mainHeight = Math.round((r.mainSessions / maxCombined) * 60);
+        const b2Height = Math.round((r.b2Sessions / maxCombined) * 60);
+        const isSelected = r.dateStr === currentDate;
+
+        return `<div onclick="onDateChange('${r.dateStr}')"
+          class="flex flex-col items-center cursor-pointer group min-w-[26px] px-0.5 py-1 rounded-lg transition ${isSelected ? 'bg-indigo-100/80 ring-1 ring-indigo-400' : 'hover:bg-slate-200/60'}">
+          <span class="text-[10px] font-bold ${total > 0 ? 'text-slate-700' : 'text-slate-300'} mb-1">${total > 0 ? total : ''}</span>
+          <div class="w-4 bg-slate-200/70 rounded-t flex flex-col justify-end overflow-hidden" style="height: 64px;">
+            ${r.b2Sessions > 0 ? `<div class="w-full bg-purple-500 transition-all" style="height: ${Math.max(b2Height, 4)}px;"></div>` : ''}
+            ${r.mainSessions > 0 ? `<div class="w-full bg-indigo-600 transition-all" style="height: ${Math.max(mainHeight, 4)}px;"></div>` : ''}
+          </div>
+          <span class="text-[10px] mt-1 font-medium ${isSelected ? 'text-indigo-700 font-bold' : 'text-slate-500'}">${String(r.dayNum).padStart(2, '0')}</span>
+        </div>`;
+      }).join('');
+    }
+
+    function renderCleaningList(day) {
+      const container = document.getElementById('cleaningListContainer');
+      const itemsHtml = appState.cleaningTemplate.map(area => {
+        const entry = day.cleaning[area.id] || { status: 'hatirlat', note: '' };
+        if (!matchesFilter(entry.status)) return '';
+
+        const rowBorder = entry.status === 'tamamlandi'
+          ? 'border-emerald-200 bg-emerald-50/30'
+          : entry.status === 'eksik'
+          ? 'border-red-300 bg-red-50/40'
+          : 'border-amber-200 bg-amber-50/30';
+
+        return `<div class="p-3 rounded-xl border ${rowBorder} transition flex flex-col gap-2">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <span class="font-semibold text-sm text-slate-800">${escapeHtml(area.name)}</span>
+            <div class="flex items-center gap-1.5">
+              ${renderStatusButtons(entry.status, `setCleaningStatus('${area.id}', '__STATUS__')`)}
+              <button onclick="deleteCleaningArea('${area.id}')" class="text-slate-400 hover:text-red-600 p-1 no-print" title="Alanı Sil">
+                <i data-lucide="trash-2" class="w-4 h-4"></i>
+              </button>
+            </div>
+          </div>
+          <div>
+            <input type="text" value="${escapeHtml(entry.note || '')}"
+              oninput="updateCleaningNote('${area.id}', this.value)"
+              placeholder="Not veya eksik malzeme (sabun, peçete vb.)..."
+              class="w-full text-xs bg-white/90 border border-slate-200 rounded-lg px-2.5 py-2 text-slate-700 focus:outline-none focus:ring-1 focus:ring-sky-500" />
+          </div>
+        </div>`;
+      }).filter(Boolean).join('');
+
+      container.innerHTML = itemsHtml || `<div class="text-center py-6 text-xs text-slate-400">Seçili filtreye uygun temizlik maddesi bulunmuyor.</div>`;
+    }
+
+    function renderNotesList(day) {
+      const container = document.getElementById('notesListContainer');
+      const combined = [
+        ...(appState.pinnedNotes || []).map(n => ({ ...n, isPinned: true })),
+        ...(day.dailyNotes || []).map(n => ({ ...n, isPinned: false }))
+      ].filter(n => matchesFilter(n.status));
+
+      if (combined.length === 0) {
+        container.innerHTML = `<div class="text-center py-6 text-xs text-slate-400">Henüz not eklenmemiş veya seçili filtrede not yok.</div>`;
+        return;
+      }
+
+      container.innerHTML = combined.map(n => {
+        const badgeColor = n.status === 'tamamlandi'
+          ? 'border-emerald-200 bg-emerald-50/30'
+          : n.status === 'eksik'
+          ? 'border-red-300 bg-red-50/40'
+          : 'border-amber-200 bg-amber-50/30';
+
+        return `<div class="p-3.5 rounded-xl border ${badgeColor} flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+          <div class="space-y-1">
+            <div class="flex items-center gap-1.5 flex-wrap">
+              <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-700">${escapeHtml(n.category || 'Genel')}</span>
+              ${n.isPinned ? `<span class="text-[10px] font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded">📌 Sabit</span>` : ''}
+              <span class="text-[10px] text-slate-400">${formatDisplayDate(n.createdAt)}</span>
+            </div>
+            <p class="text-sm font-medium text-slate-900 ${n.status === 'tamamlandi' ? 'line-through text-slate-500' : ''}">${escapeHtml(n.text)}</p>
+          </div>
+          <div class="flex items-center gap-1.5 self-end sm:self-center">
+            ${renderStatusButtons(n.status, `setNoteStatus('${n.id}', ${n.isPinned}, '__STATUS__')`)}
+            <button onclick="deleteNoteItem('${n.id}', ${n.isPinned})" class="text-slate-400 hover:text-red-600 p-1 no-print">
+              <i data-lucide="trash-2" class="w-4 h-4"></i>
+            </button>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    function renderUrgentPayments() {
+      const container = document.getElementById('urgentPaymentsContainer');
+      const filtered = (appState.urgentPayments || []).filter(u => matchesFilter(u.status));
+
+      if (filtered.length === 0) {
+        container.innerHTML = `<div class="text-center py-6 text-xs text-slate-400">Kayıtlı acil ödeme bulunmuyor.</div>`;
+        return;
+      }
+
+      container.innerHTML = filtered.map(u => {
+        const isOverdue = u.status !== 'tamamlandi' && u.dueDate && u.dueDate <= currentDate;
+        const cardCls = u.status === 'tamamlandi'
+          ? 'border-emerald-200 bg-emerald-50/30'
+          : u.status === 'eksik' || isOverdue
+          ? 'border-red-300 bg-red-50/40'
+          : 'border-amber-200 bg-amber-50/30';
+
+        return `<div class="p-3.5 rounded-xl border ${cardCls} space-y-2">
+          <div class="flex items-start justify-between gap-2">
+            <div>
+              <div class="flex items-center gap-2 flex-wrap">
+                <h4 class="text-sm font-bold text-slate-900 ${u.status === 'tamamlandi' ? 'line-through text-slate-500' : ''}">${escapeHtml(u.title)}</h4>
+                ${u.amount > 0 ? `<span class="text-xs font-bold text-rose-700 bg-rose-100 px-2 py-0.5 rounded-lg">${formatCurrency(u.amount)}</span>` : ''}
+              </div>
+              <div class="flex items-center gap-2 text-xs text-slate-500 mt-1 flex-wrap">
+                <span>Son Gün: <strong class="${isOverdue ? 'text-red-600' : 'text-slate-700'}">${formatDisplayDate(u.dueDate)}</strong></span>
+                ${u.note ? `<span>• ${escapeHtml(u.note)}</span>` : ''}
+              </div>
+            </div>
+            <button onclick="deleteUrgentPayment('${u.id}')" class="text-slate-400 hover:text-red-600 p-1 no-print">
+              <i data-lucide="trash-2" class="w-4 h-4"></i>
+            </button>
+          </div>
+          <div class="flex justify-end">
+            ${renderStatusButtons(u.status, `setUrgentStatus('${u.id}', '__STATUS__')`)}
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    function renderSalaries() {
+      const container = document.getElementById('salaryListContainer');
+      const filtered = (appState.salaries || []).filter(s => matchesFilter(s.status));
+
+      if (filtered.length === 0) {
+        container.innerHTML = `<div class="text-center py-6 text-xs text-slate-400">Kayıtlı personel maaş takibi bulunmuyor.</div>`;
+        return;
+      }
+
+      container.innerHTML = filtered.map(s => {
+        const isDue = s.status !== 'tamamlandi' && s.dueDate && s.dueDate <= currentDate;
+        const cardCls = s.status === 'tamamlandi'
+          ? 'border-emerald-200 bg-emerald-50/30'
+          : s.status === 'eksik' || isDue
+          ? 'border-red-300 bg-red-50/40'
+          : 'border-amber-200 bg-amber-50/30';
+
+        return `<div class="p-3.5 rounded-xl border ${cardCls} space-y-2">
+          <div class="flex items-start justify-between gap-2">
+            <div>
+              <div class="flex items-center gap-2 flex-wrap">
+                <h4 class="text-sm font-bold text-slate-900 ${s.status === 'tamamlandi' ? 'line-through text-slate-500' : ''}">${escapeHtml(s.name)}</h4>
+                ${s.amount > 0 ? `<span class="text-xs font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-lg">${formatCurrency(s.amount)}</span>` : ''}
+              </div>
+              <div class="flex items-center gap-2 text-xs text-slate-500 mt-1 flex-wrap">
+                <span>Maaş Tarihi: <strong class="${isDue ? 'text-red-600' : 'text-slate-700'}">${formatDisplayDate(s.dueDate)}</strong></span>
+                ${s.note ? `<span>• ${escapeHtml(s.note)}</span>` : ''}
+              </div>
+            </div>
+            <button onclick="deleteSalaryItem('${s.id}')" class="text-slate-400 hover:text-red-600 p-1 no-print">
+              <i data-lucide="trash-2" class="w-4 h-4"></i>
+            </button>
+          </div>
+          <div class="flex justify-end">
+            ${renderStatusButtons(s.status, `setSalaryStatus('${s.id}', '__STATUS__')`)}
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    function renderSummaryCards() {
+      const day = ensureDayExists(currentDate);
+
+      const monthPrefix = currentDate.slice(0, 7);
+      let monthlyTotal = 0;
+      let monthlyActiveDays = 0;
+      Object.keys(appState.days).forEach(dKey => {
+        if (dKey.startsWith(monthPrefix)) {
+          const s = Number(appState.days[dKey].dailySessions || 0);
+          if (s > 0) {
+            monthlyTotal += s;
+            monthlyActiveDays++;
+          }
+        }
+      });
+      const monthlyAvg = monthlyActiveDays > 0 ? (monthlyTotal / monthlyActiveDays).toFixed(1) : '0';
+
+      document.getElementById('quickDailySes').textContent = day.dailySessions || 0;
+      document.getElementById('quickAvgSes').textContent = monthlyAvg;
+
+      const totalAreas = appState.cleaningTemplate.length;
+      let cleanedAreas = 0;
+      let pendingClean = 0;
+      let countDone = 0;
+      let countMissing = 0;
+      let countRemind = 0;
+
+      appState.cleaningTemplate.forEach(a => {
+        const st = day.cleaning[a.id]?.status || 'hatirlat';
+        if (st === 'tamamlandi') { cleanedAreas++; countDone++; }
+        else if (st === 'eksik') { pendingClean++; countMissing++; }
+        else { pendingClean++; countRemind++; }
+      });
+
+      const camSt = day.camera?.status || 'hatirlat';
+      if (camSt === 'tamamlandi') countDone++;
+      else if (camSt === 'eksik') { pendingClean++; countMissing++; }
+      else { pendingClean++; countRemind++; }
+
+      document.getElementById('cleaningProgressText').textContent = `${cleanedAreas}/${totalAreas}`;
+      document.getElementById('quickCleanStat').textContent = `${cleanedAreas}/${totalAreas}`;
+
+      const totalB2 = appState.branch2Template.length;
+      let doneB2 = 0;
+      let pendingB2 = 0;
+      appState.branch2Template.forEach(q => {
+        const st = day.branch2Checks?.[q.id]?.status || 'hatirlat';
+        if (st === 'tamamlandi') { doneB2++; countDone++; }
+        else if (st === 'eksik') { pendingB2++; countMissing++; }
+        else { pendingB2++; countRemind++; }
+      });
+      document.getElementById('quickB2Stat').textContent = `${doneB2}/${totalB2}`;
+
+      let pendingMoney = 0;
+      let pendingPayCount = 0;
+      (appState.urgentPayments || []).forEach(u => {
+        if (u.status !== 'tamamlandi') {
+          pendingMoney += Number(u.amount || 0);
+          pendingPayCount++;
+        }
+        if (u.status === 'tamamlandi') countDone++;
+        else if (u.status === 'eksik') countMissing++;
+        else countRemind++;
+      });
+
+      (appState.salaries || []).forEach(s => {
+        if (s.status !== 'tamamlandi') {
+          pendingMoney += Number(s.amount || 0);
+          pendingPayCount++;
+        }
+        if (s.status === 'tamamlandi') countDone++;
+        else if (s.status === 'eksik') countMissing++;
+        else countRemind++;
+      });
+      document.getElementById('quickPayStat').textContent = formatCurrency(pendingMoney);
+
+      let pendingNotesCount = 0;
+      const allNotes = [...(appState.pinnedNotes || []), ...(day.dailyNotes || [])];
+      allNotes.forEach(n => {
+        if (n.status === 'tamamlandi') countDone++;
+        else if (n.status === 'eksik') { pendingNotesCount++; countMissing++; }
+        else { pendingNotesCount++; countRemind++; }
+      });
+
+      document.getElementById('topRemindCount').textContent = countRemind;
+      document.getElementById('topMissingCount').textContent = countMissing;
+      document.getElementById('topDoneCount').textContent = countDone;
+
+      setBadgeValue('sube2', pendingB2);
+      setBadgeValue('temizlik', pendingClean);
+      setBadgeValue('odemeler', pendingPayCount);
+      setBadgeValue('notlar', pendingNotesCount);
+    }
+
+    function setBadgeValue(tabKey, count) {
+      const mobB = document.getElementById(`mobBadge-${tabKey}`);
+      const deskB = document.getElementById(`deskBadge-${tabKey}`);
+      if (mobB) {
+        mobB.textContent = count;
+        mobB.style.display = count > 0 ? 'inline-block' : 'none';
+      }
+      if (deskB) {
+        deskB.textContent = count;
+      }
+    }
+
+    function renderHistoryTable() {
+      const tbody = document.getElementById('historyTableBody');
+      const dates = Object.keys(appState.days).sort().reverse().slice(0, 10);
+
+      tbody.innerHTML = dates.map(dStr => {
+        const d = appState.days[dStr];
+        const totalAreas = appState.cleaningTemplate.length;
+        let doneClean = 0;
+        appState.cleaningTemplate.forEach(a => {
+          if (d.cleaning && d.cleaning[a.id]?.status === 'tamamlandi') doneClean++;
+        });
+
+        const totalB2 = appState.branch2Template.length;
+        let doneB2 = 0;
+        appState.branch2Template.forEach(q => {
+          if (d.branch2Checks && d.branch2Checks[q.id]?.status === 'tamamlandi') doneB2++;
+        });
+
+        return `<tr onclick="onDateChange('${dStr}')" class="hover:bg-indigo-50/50 cursor-pointer transition ${dStr === currentDate ? 'bg-indigo-50/80 font-semibold' : ''}">
+          <td class="py-2.5 px-3 text-slate-800">${formatDisplayDate(dStr)}</td>
+          <td class="py-2.5 px-2 text-center text-indigo-700 font-bold">${d.dailySessions || 0}</td>
+          <td class="py-2.5 px-2 text-center text-purple-700 font-bold">${d.branch2Sessions || 0}</td>
+          <td class="py-2.5 px-2 text-center">
+            <span class="px-2 py-0.5 rounded-full text-[10px] ${doneClean === totalAreas && totalAreas > 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">
+              ${doneClean}/${totalAreas}
+            </span>
+          </td>
+          <td class="py-2.5 px-2 text-center">
+            <span class="px-2 py-0.5 rounded-full text-[10px] ${doneB2 === totalB2 && totalB2 > 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-purple-100 text-purple-800'}">
+              ${doneB2}/${totalB2}
+            </span>
+          </td>
+        </tr>`;
+      }).join('');
+    }
+
+    function exportToExcel() {
+      const wb = XLSX.utils.book_new();
+
+      const summaryRows = Object.keys(appState.days).sort().reverse().map(dStr => {
+        const d = appState.days[dStr];
+        const totalAreas = appState.cleaningTemplate.length;
+        let doneClean = 0;
+        appState.cleaningTemplate.forEach(a => {
+          if (d.cleaning && d.cleaning[a.id]?.status === 'tamamlandi') doneClean++;
+        });
+        return {
+          'Tarih': formatDisplayDate(dStr),
+          'Merkez Toplam Seans': d.dailySessions || 0,
+          'Merkez Bireysel Seans': d.indSessions || 0,
+          'Merkez Grup Seansı': d.grpSessions || 0,
+          'Merkez Öğrenci Sayısı': d.studentCount || 0,
+          '2. Şube Günlük Seans': d.branch2Sessions || 0,
+          '2. Şube Öğrenci Sayısı': d.branch2Students || 0,
+          'İki Şube Toplam Seans': (d.dailySessions || 0) + (d.branch2Sessions || 0),
+          'Temizlik Durumu': `${doneClean} / ${totalAreas} Tamamlandı`,
+          'Kamera Yedekleme': d.camera?.status === 'tamamlandi' ? 'Tamamlandı' : d.camera?.status === 'eksik' ? 'Eksik' : 'Hatırlat'
+        };
+      });
+      const wsSummary = XLSX.utils.json_to_sheet(summaryRows);
+      XLSX.utils.book_append_sheet(wb, wsSummary, 'Gunluk_ve_Aylik_Seans');
+
+      const day = ensureDayExists(currentDate);
+      const branch2Rows = appState.branch2Template.map(q => {
+        const c = (day.branch2Checks && day.branch2Checks[q.id]) || { status: 'hatirlat', answer: '' };
+        return {
+          'Tarih': formatDisplayDate(currentDate),
+          'Kategori': q.category,
+          '2. Şube Kontrol Sorusu': q.question,
+          'Durum': c.status === 'tamamlandi' ? 'Tamamlandı' : c.status === 'eksik' ? 'Eksik / Sıkıntı Var' : 'Hatırlat / Sorulacak',
+          'Cevap / Açıklama': c.answer || ''
+        };
+      });
+      const wsBranch2 = XLSX.utils.json_to_sheet(branch2Rows);
+      XLSX.utils.book_append_sheet(wb, wsBranch2, '2_Sube_Kontrol');
+
+      const cleaningRows = appState.cleaningTemplate.map(a => {
+        const c = day.cleaning[a.id] || { status: 'hatirlat', note: '' };
+        return {
+          'Tarih': formatDisplayDate(currentDate),
+          'Temizlik Alanı (WC / Oda)': a.name,
+          'Durum': c.status === 'tamamlandi' ? 'Tamamlandı' : c.status === 'eksik' ? 'Eksik' : 'Hatırlat',
+          'Açıklama / Not': c.note || ''
+        };
+      });
+      const wsCleaning = XLSX.utils.json_to_sheet(cleaningRows);
+      XLSX.utils.book_append_sheet(wb, wsCleaning, 'Temizlik_Kontrol');
+
+      const financeRows = [
+        ...(appState.urgentPayments || []).map(u => ({
+          'Tür': 'Acil Ödeme / Fatura',
+          'Başlık / Personel': u.title,
+          'Tutar (TL)': u.amount || 0,
+          'Ödeme Tarihi': formatDisplayDate(u.dueDate),
+          'Durum': u.status === 'tamamlandi' ? 'Ödendi' : u.status === 'eksik' ? 'Eksik' : 'Hatırlat',
+          'Not': u.note || ''
+        })),
+        ...(appState.salaries || []).map(s => ({
+          'Tür': 'Personel Maaş',
+          'Başlık / Personel': s.name,
+          'Tutar (TL)': s.amount || 0,
+          'Ödeme Tarihi': formatDisplayDate(s.dueDate),
+          'Durum': s.status === 'tamamlandi' ? 'Ödendi' : s.status === 'eksik' ? 'Eksik' : 'Hatırlat',
+          'Not': s.note || ''
+        }))
+      ];
+      const wsFinance = XLSX.utils.json_to_sheet(financeRows.length ? financeRows : [{ 'Bilgi': 'Kayıtlı ödeme yok' }]);
+      XLSX.utils.book_append_sheet(wb, wsFinance, 'Maas_ve_Odemeler');
+
+      XLSX.writeFile(wb, `Kurum_ve_2Sube_Raporu_${currentDate}.xlsx`);
+    }
+
+    function openCloudModal() {
+      document.getElementById('institutionNameInput').value = appState.institutionName || '';
+      document.getElementById('branch2NameInput').value = appState.branch2Name || '';
+      const modal = document.getElementById('cloudModal');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    }
+
+    function closeCloudModal() {
+      const modal = document.getElementById('cloudModal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+
+    function saveInstitutionName() {
+      const val1 = document.getElementById('institutionNameInput').value.trim();
+      const val2 = document.getElementById('branch2NameInput').value.trim();
+      if (val1) appState.institutionName = val1;
+      if (val2) appState.branch2Name = val2;
+      saveState();
+      renderAll();
+      showSaveToast('Kurum başlıkları kaydedildi!');
+    }
+
+    function downloadJsonBackup() {
+      const blob = new Blob([JSON.stringify(appState, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `Kurum_Takip_Yedek_${currentDate}.json`;
+      a.click();
+    }
+
+    function restoreJsonBackup(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const imported = JSON.parse(e.target.result);
+          if (imported && imported.days) {
+            appState = imported;
+            saveState(true);
+            ensureDayExists(currentDate);
+            renderAll();
+            showSaveToast('Yedek dosyası yüklendi ve Firebase ile eşitlendi!');
+            closeCloudModal();
+          } else {
+            alert('Geçersiz yedek dosyası formatı.');
+          }
+        } catch (err) {
+          alert('Dosya okunamadı: ' + err.message);
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    function formatCurrency(val) {
+      return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }).format(val || 0);
+    }
+
+    function escapeHtml(str) {
+      return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      loadState();
+      const monthInput = document.getElementById('analyticsMonthInput');
+      if (monthInput) monthInput.value = currentDate.slice(0, 7);
+      switchTab(currentTab);
+      renderAll();
+      // Uygulama açıldığında doğrudan resmi Firebase SDK üzerinden gerçek zamanlı senkronizasyonu başlat
+      initFirebaseRealtimeSync();
+    });
+  </script>
+</body>
+</html>
