@@ -10,6 +10,10 @@
   <script src="https://unpkg.com/lucide@latest"></script>
   <!-- SheetJS for Excel Export -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <!-- Resmi Firebase Web SDK (Compat CDN - Tek Dosya HTML için en kararlı sürüm) -->
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     body {
@@ -27,7 +31,6 @@
     .status-tamamlandi { background-color: #dcfce7; color: #166534; border-color: #86efac; }
     .status-eksik { background-color: #fee2e2; color: #991b1b; border-color: #fca5a5; }
     .status-hatirlat { background-color: #fef3c7; color: #92400e; border-color: #fde047; }
-    /* Gizli scrollbar (yatay sekme menüsü için) */
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
   </style>
@@ -53,14 +56,14 @@
           <div class="truncate">
             <h1 class="text-sm sm:text-lg font-bold tracking-tight truncate" id="institutionNameDisplay">Kurum Kontrol & Takip</h1>
             <p class="text-[11px] text-slate-400 flex items-center gap-1.5">
-              <span id="syncIndicator" class="w-2 h-2 rounded-full bg-emerald-400 inline-block shrink-0"></span>
-              <span id="syncStatusText" class="truncate">Otomatik Kayıt Aktif</span>
+              <span id="syncIndicator" class="w-2 h-2 rounded-full bg-amber-400 animate-pulse inline-block shrink-0"></span>
+              <span id="syncStatusText" class="truncate">Firebase Buluta Bağlanıyor...</span>
             </p>
           </div>
         </div>
 
         <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
-          <!-- Manuel Kaydet Butonu -->
+          <!-- Manuel Kaydet & Şimdi Senkronize Et Butonu -->
           <button onclick="manualSaveAction()" class="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white text-xs sm:text-sm font-bold px-3 py-2 rounded-xl transition shadow-sm">
             <i data-lucide="save" class="w-4 h-4"></i>
             <span>Kaydet</span>
@@ -71,16 +74,15 @@
             <span class="hidden lg:inline">Excel</span>
           </button>
 
-          <button onclick="openCloudModal()" class="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-2.5 py-2 rounded-xl transition" title="Bulut & Yedekleme Ayarları">
+          <button onclick="openCloudModal()" class="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-2.5 py-2 rounded-xl transition" title="Firebase Bulut & Yedekleme">
             <i data-lucide="cloud" class="w-4 h-4"></i>
-            <span class="hidden sm:inline">Bulut & Yedek</span>
+            <span class="hidden sm:inline">Firebase & Yedek</span>
           </button>
         </div>
       </div>
 
       <!-- Alt Satır: Tarih Seçici & Durum Filtresi -->
       <div class="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-800">
-        <!-- Tarih Seçici -->
         <div class="flex items-center bg-slate-800 rounded-xl p-1 border border-slate-700 w-full sm:w-auto justify-between sm:justify-start">
           <button onclick="changeDate(-1)" class="p-1.5 hover:bg-slate-700 rounded-lg text-slate-300 hover:text-white transition" title="Önceki Gün">
             <i data-lucide="chevron-left" class="w-4 h-4"></i>
@@ -94,7 +96,6 @@
           </button>
         </div>
 
-        <!-- Hızlı Durum Filtresi -->
         <div class="flex items-center gap-1 overflow-x-auto no-scrollbar w-full sm:w-auto">
           <button onclick="setFilterStatus('all')" id="filterBtn-all" class="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-white text-slate-900 shrink-0">
             Tümü
@@ -108,13 +109,13 @@
           <button onclick="setFilterStatus('tamamlandi')" id="filterBtn-tamamlandi" class="text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-slate-800 text-emerald-300 hover:bg-slate-700 shrink-0 flex items-center gap-1">
             <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Tamam (<span id="topDoneCount">0</span>)
           </button>
-          <button onclick="copyFromPreviousDay()" class="text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-indigo-950 text-indigo-300 border border-indigo-800 hover:bg-indigo-900 shrink-0 ml-auto sm:ml-1" title="Dünkü tamamlanmamış notları aktar">
+          <button onclick="copyFromPreviousDay()" class="text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-indigo-950 text-indigo-300 border border-indigo-800 hover:bg-indigo-900 shrink-0 ml-auto sm:ml-1">
             + Dünü Aktar
           </button>
         </div>
       </div>
 
-      <!-- Masaüstü & Tablet Sekme Çubuğu (Üst Tab Bar) -->
+      <!-- Masaüstü & Tablet Sekme Çubuğu -->
       <nav class="hidden md:flex items-center gap-1.5 pt-2 border-t border-slate-800 overflow-x-auto no-scrollbar">
         <button onclick="switchTab('seans')" id="deskTab-seans" class="tab-btn px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2">
           <i data-lucide="bar-chart-3" class="w-4 h-4"></i>
@@ -149,7 +150,7 @@
     </div>
   </header>
 
-  <!-- Mobil Üst Kompakt Özet Шeridi (Her sekmede hızlı bakış) -->
+  <!-- Hızlı Özet Şeridi -->
   <div class="bg-white border-b border-slate-200 px-3 py-2 shadow-xs no-print">
     <div class="max-w-7xl mx-auto grid grid-cols-4 gap-2 text-center">
       <div onclick="switchTab('seans')" class="cursor-pointer bg-indigo-50/70 rounded-xl p-1.5 border border-indigo-100">
@@ -174,14 +175,9 @@
   <!-- Ana İçerik -->
   <main class="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 space-y-5">
 
-    <!-- ==========================================
-         SEKME 1: SEANS, ÖĞRENCİ & AYLIK ANALİZ
-         ========================================== -->
+    <!-- SEKME 1: SEANS, ÖĞRENCİ & AYLIK ANALİZ -->
     <div id="tabContent-seans" class="tab-section space-y-5">
-      
-      <!-- Günlük Seans ve Öğrenci Giriş Kartları -->
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <!-- Günlük Seans Sayısı + Aylık Ortalama -->
         <div class="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200/80 print-card flex flex-col justify-between">
           <div class="flex items-center justify-between">
             <span class="text-xs font-bold uppercase tracking-wider text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg">Merkez Günlük Seans Girişi</span>
@@ -218,7 +214,6 @@
           </div>
         </div>
 
-        <!-- Mevcut Öğrenci Sayısı -->
         <div class="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200/80 print-card flex flex-col justify-between">
           <div class="flex items-center justify-between">
             <span class="text-xs font-bold uppercase tracking-wider text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-lg">Mevcut Öğrenci Sayımız</span>
@@ -256,7 +251,6 @@
         </div>
       </div>
 
-      <!-- Aylık Seans Analizi ve Ortalama Paneli -->
       <section class="bg-white rounded-2xl shadow-sm border border-indigo-200/80 overflow-hidden print-card">
         <div class="px-4 sm:px-5 py-3.5 border-b border-slate-100 bg-gradient-to-r from-indigo-50/70 via-white to-emerald-50/50 flex flex-wrap items-center justify-between gap-3">
           <div class="flex items-center gap-2.5">
@@ -326,12 +320,9 @@
           </div>
         </div>
       </section>
-
     </div>
 
-    <!-- ==========================================
-         SEKME 2: 2. ŞUBE GÜNLÜK KONTROL & SORULAR
-         ========================================== -->
+    <!-- SEKME 2: 2. ŞUBE GÜNLÜK KONTROL & SORULAR -->
     <div id="tabContent-sube2" class="tab-section hidden space-y-5">
       <section class="bg-white rounded-2xl shadow-sm border-2 border-purple-200 overflow-hidden print-card">
         <div class="px-4 sm:px-5 py-4 border-b border-purple-100 bg-gradient-to-r from-purple-50 via-fuchsia-50/40 to-white flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -348,7 +339,6 @@
             </div>
           </div>
 
-          <!-- 2. Şube Seans ve Öğrenci Giriş -->
           <div class="flex flex-wrap items-center justify-between sm:justify-end gap-2 bg-white p-2.5 rounded-xl border border-purple-200 shadow-xs">
             <div class="flex items-center gap-1.5">
               <span class="text-xs font-semibold text-purple-800">2. Şube Seans:</span>
@@ -371,7 +361,6 @@
         <div class="p-4 sm:p-5 space-y-4">
           <div id="branch2QuestionsContainer" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
 
-          <!-- Yeni 2. Şube Sorusu Ekleme -->
           <div class="pt-3 border-t border-purple-100 flex flex-col sm:flex-row items-stretch sm:items-center gap-2 no-print">
             <select id="newBranch2Category" class="text-xs font-semibold bg-purple-50 border border-purple-200 rounded-xl px-3 py-2.5 text-purple-900 focus:outline-none">
               <option value="Görüşme">📞 Görüşme</option>
@@ -392,12 +381,9 @@
       </section>
     </div>
 
-    <!-- ==========================================
-         SEKME 3: TEMİZLİK ALANLARI & KAMERA YEDEK
-         ========================================== -->
+    <!-- SEKME 3: TEMİZLİK ALANLARI & KAMERA YEDEK -->
     <div id="tabContent-temizlik" class="tab-section hidden space-y-5">
       <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
-        <!-- Detaylı Temizlik Kontrolü -->
         <div class="lg:col-span-7 bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden print-card">
           <div class="px-4 sm:px-5 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2 bg-slate-50/50">
             <div class="flex items-center gap-2.5">
@@ -428,7 +414,6 @@
           </div>
         </div>
 
-        <!-- Kamera Kayıtları Yedekleme -->
         <div class="lg:col-span-5 bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden print-card self-start">
           <div class="px-4 sm:px-5 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2 bg-slate-50/50">
             <div class="flex items-center gap-2.5">
@@ -469,13 +454,9 @@
       </div>
     </div>
 
-    <!-- ==========================================
-         SEKME 4: MAAŞLAR & ACİL ÖDEMELER
-         ========================================== -->
+    <!-- SEKME 4: MAAŞLAR & ACİL ÖDEMELER -->
     <div id="tabContent-odemeler" class="tab-section hidden space-y-5">
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        
-        <!-- Yapılacak Acil Ödemeler -->
         <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden print-card">
           <div class="px-4 sm:px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-rose-50/40">
             <div class="flex items-center gap-2.5">
@@ -523,7 +504,6 @@
           </div>
         </div>
 
-        <!-- Personel Maaş Ödeme Tarihleri -->
         <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden print-card">
           <div class="px-4 sm:px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-emerald-50/40">
             <div class="flex items-center gap-2.5">
@@ -570,17 +550,12 @@
             <div id="salaryListContainer" class="space-y-2.5"></div>
           </div>
         </div>
-
       </div>
     </div>
 
-    <!-- ==========================================
-         SEKME 5: GENEL NOTLAR & GEÇMİŞ ÖZETİ
-         ========================================== -->
+    <!-- SEKME 5: GENEL NOTLAR & GEÇMİŞ ÖZETİ -->
     <div id="tabContent-notlar" class="tab-section hidden space-y-5">
       <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
-        
-        <!-- Kurum İçi Notlar -->
         <div class="lg:col-span-7 bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden print-card">
           <div class="px-4 sm:px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
             <div class="flex items-center gap-2.5">
@@ -632,7 +607,6 @@
           </div>
         </div>
 
-        <!-- Son Kaydedilen Günler Özeti -->
         <div class="lg:col-span-5 bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden print-card self-start">
           <div class="px-4 sm:px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
             <div class="flex items-center gap-2.5">
@@ -660,16 +634,15 @@
             </table>
           </div>
         </div>
-
       </div>
     </div>
 
   </main>
 
-  <!-- MOBİL ALT SEKME MENÜSÜ (BOTTOM NAVIGATION BAR) -->
+  <!-- MOBİL ALT SEKME MENÜSÜ -->
   <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-slate-900 text-slate-300 border-t border-slate-800 z-40 px-1 py-1.5 no-print shadow-2xl">
     <div class="grid grid-cols-5 gap-1">
-      <button onclick="switchTab('seans')" id="mobTab-seans" class=" flex flex-col items-center justify-center py-1.5 rounded-xl transition">
+      <button onclick="switchTab('seans')" id="mobTab-seans" class="flex flex-col items-center justify-center py-1.5 rounded-xl transition">
         <i data-lucide="bar-chart-3" class="w-5 h-5"></i>
         <span class="text-[10px] font-semibold mt-0.5">Seans/Özet</span>
       </button>
@@ -700,13 +673,13 @@
     </div>
   </nav>
 
-  <!-- ÜCRETSİZ BULUT SENKRONİZASYON & YEDEKLEME MODALI -->
+  <!-- FIREBASE SENKRONİZASYON & YEDEKLEME MODALI -->
   <div id="cloudModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden items-center justify-center p-4 no-print">
     <div class="bg-white rounded-2xl max-w-2xl w-full shadow-2xl border border-slate-200 overflow-hidden max-h-[90vh] flex flex-col">
       <div class="px-5 py-4 bg-slate-900 text-white flex items-center justify-between">
         <div class="flex items-center gap-2.5">
-          <i data-lucide="cloud-cog" class="w-5 h-5 text-indigo-400"></i>
-          <h3 class="text-sm sm:text-base font-bold">Bulut Senkronizasyon & Kurum Ayarları</h3>
+          <i data-lucide="flame" class="w-5 h-5 text-amber-400"></i>
+          <h3 class="text-sm sm:text-base font-bold">Firebase Bulut Senkronizasyon & Kurum Ayarları</h3>
         </div>
         <button onclick="closeCloudModal()" class="text-slate-400 hover:text-white p-1">
           <i data-lucide="x" class="w-5 h-5"></i>
@@ -714,6 +687,35 @@
       </div>
 
       <div class="p-5 overflow-y-auto space-y-5 text-sm">
+        <!-- Firebase Canlı Durum Bilgisi -->
+        <div class="bg-indigo-50/80 p-4 rounded-xl border border-indigo-200 space-y-2.5">
+          <div class="flex items-center justify-between">
+            <h4 class="font-bold text-indigo-950 flex items-center gap-2">
+              <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-600"></i>
+              Resmi Firebase Web SDK Bağlantısı (kurum-takip-8542e)
+            </h4>
+            <span id="modalFirebaseBadge" class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800">Aktif</span>
+          </div>
+          <p class="text-xs text-indigo-900 leading-relaxed">
+            Uygulamanız doğrudan <strong>kurum-takip-8542e</strong> Firebase projenize bağlıdır. Telefonunuzdan veya bilgisayarınızdan girdiğiniz her veri gerçek zamanlı olarak tüm cihazlarınızda anında eşitlenir.
+          </p>
+          <div id="firebaseErrorHelp" class="hidden bg-rose-50 border border-rose-200 text-rose-900 p-3 rounded-xl text-xs space-y-1">
+            <div class="font-bold">⚠️ Firebase Veritabanı İzin / Kurulum Uyarısı:</div>
+            <p id="firebaseErrorDetail"></p>
+            <p class="text-[11px] text-rose-700 mt-1">
+              Not: Firebase Console &rarr; <strong>Firestore Database</strong> (veya <strong>Realtime Database</strong>) bölümünden veritabanını oluşturup <em>Rules (Kurallar)</em> kısmında okuma/yazma iznini (<code>allow read, write: if true;</code> veya <code>.read: true, .write: true</code>) açtığınızdan emin olun.
+            </p>
+          </div>
+          <div class="flex flex-wrap gap-2 pt-1">
+            <button onclick="pushToFirebase(true)" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-3.5 py-2 rounded-xl flex items-center gap-1.5">
+              <i data-lucide="upload-cloud" class="w-4 h-4"></i> Şimdi Firebase'e Gönder
+            </button>
+            <button onclick="pullFromFirebase(true)" class="bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 text-xs font-semibold px-3.5 py-2 rounded-xl flex items-center gap-1.5">
+              <i data-lucide="download-cloud" class="w-4 h-4"></i> Firebase'den Şimdi Çek
+            </button>
+          </div>
+        </div>
+
         <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
           <div>
             <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Merkez Kurum Başlığı</label>
@@ -729,10 +731,10 @@
         <div class="bg-emerald-50/70 p-4 rounded-xl border border-emerald-200 space-y-3">
           <h4 class="font-bold text-emerald-950 flex items-center gap-2">
             <i data-lucide="hard-drive-download" class="w-4 h-4 text-emerald-600"></i>
-            1. Cihaza Yedek İndir / Geri Yükle
+            Cihaza Yedek Dosyası İndir / Geri Yükle
           </h4>
           <p class="text-xs text-emerald-800">
-            Tüm verileriniz girdiğiniz anda otomatik olarak bu tarayıcıya kaydedilir. Ayrıca yedek dosyası indirip başka cihaza aktarabilirsiniz.
+            Firebase bulut senkronizasyonuna ek olarak istediğiniz zaman tüm verilerinizi <code>.json</code> dosyası olarak cihazınıza indirebilirsiniz.
           </p>
           <div class="flex flex-wrap gap-2">
             <button onclick="downloadJsonBackup()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-4 py-2 rounded-xl flex items-center gap-1.5">
@@ -744,42 +746,54 @@
             </label>
           </div>
         </div>
-
-        <div class="bg-indigo-50/60 p-4 rounded-xl border border-indigo-200 space-y-3">
-          <h4 class="font-bold text-indigo-950 flex items-center gap-2">
-            <i data-lucide="globe" class="w-4 h-4 text-indigo-600"></i>
-            2. Telefon ve Bilgisayar Arası Ücretsiz Bulut Eşitleme
-          </h4>
-          <p class="text-xs text-indigo-900 leading-relaxed">
-            GitHub Pages'e yüklediğinizde hem telefondan hem bilgisayardan girdiğiniz verilerin birbiriyle eşitlenmesi için ücretsiz <a href="https://www.npoint.io/" target="_blank" class="underline font-bold">npoint.io</a> veya Firebase Realtime DB URL adresinizi aşağıya kaydedin.
-          </p>
-
-          <div class="space-y-2">
-            <label class="block text-xs font-semibold text-indigo-900">Ücretsiz Bulut Veritabanı URL:</label>
-            <input type="url" id="cloudEndpointInput" placeholder="Örn: https://api.npoint.io/..."
-              class="w-full bg-white border border-indigo-200 rounded-xl px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-            <label class="block text-xs font-semibold text-indigo-900 mt-2">API Key / Secret (İsteğe Bağlı):</label>
-            <input type="password" id="cloudSecretInput" placeholder="Varsa API Key (npoint için boş bırakın)"
-              class="w-full bg-white border border-indigo-200 rounded-xl px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-          </div>
-
-          <div class="flex flex-wrap items-center gap-2 pt-2">
-            <button onclick="saveCloudConfig()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-4 py-2 rounded-xl">
-              Bulut Ayarlarını Kaydet
-            </button>
-            <button onclick="pushToCloud(true)" class="bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold px-3.5 py-2 rounded-xl flex items-center gap-1">
-              <i data-lucide="upload-cloud" class="w-3.5 h-3.5"></i> Şimdi Buluta Gönder
-            </button>
-            <button onclick="pullFromCloud(true)" class="bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 text-xs font-semibold px-3.5 py-2 rounded-xl flex items-center gap-1">
-              <i data-lucide="download-cloud" class="w-3.5 h-3.5"></i> Buluttan Çek
-            </button>
-          </div>
-        </div>
       </div>
     </div>
   </div>
 
   <script>
+    // =========================================================================
+    // 1. RESMİ FIREBASE WEB SDK YAPILANDIRMASI (DOĞRUDAN GÖMÜLÜ)
+    // =========================================================================
+    const firebaseConfig = {
+      apiKey: "AIzaSyBEvjD2-fmNq7CQHrS9poYYVOmE3dwTgBg",
+      authDomain: "kurum-takip-8542e.firebaseapp.com",
+      databaseURL: "https://kurum-takip-8542e-default-rtdb.firebaseio.com",
+      projectId: "kurum-takip-8542e",
+      storageBucket: "kurum-takip-8542e.firebasestorage.app",
+      messagingSenderId: "451967612522",
+      appId: "1:451967612522:web:bd5092c65f1a7735f0fc13"
+    };
+
+    let firebaseApp = null;
+    let firestoreDocRef = null;
+    let rtdbRef = null;
+    let activeFirebaseMode = null; // 'firestore' | 'rtdb'
+    let isApplyingRemoteUpdate = false;
+    let lastLocalTimestamp = 0;
+
+    try {
+      firebaseApp = firebase.initializeApp(firebaseConfig);
+      // Hem Cloud Firestore hem de Realtime Database referanslarını hazırla
+      // (Kullanıcı Firebase Console'da hangisini açtıysa otomatik olarak onunla çalışır)
+      try {
+        const db = firebase.firestore();
+        firestoreDocRef = db.collection('kurum_takip').doc('ana_veri');
+      } catch (e) {
+        console.warn('Firestore başlatılamadı:', e);
+      }
+      try {
+        const rtdb = firebase.database();
+        rtdbRef = rtdb.ref('kurum_takip/ana_veri');
+      } catch (e) {
+        console.warn('RTDB başlatılamadı:', e);
+      }
+    } catch (err) {
+      console.error('Firebase başlatma hatası:', err);
+    }
+
+    // =========================================================================
+    // 2. UYGULAMA VERİ MODELİ VE VARSAYILAN ŞABLONLAR
+    // =========================================================================
     const STORAGE_KEY = 'KURUM_TAKIP_DATA_V1';
     const ACTIVE_TAB_KEY = 'KURUM_TAKIP_ACTIVE_TAB';
 
@@ -794,42 +808,18 @@
     ];
 
     const DEFAULT_BRANCH2_QUESTIONS = [
-      {
-        id: 'b2-gorusme',
-        category: 'Görüşme',
-        question: 'Bugün görüşmem gereken kimse (veli, personel, kurum) var mı? Görüşme yapıldı mı?'
-      },
-      {
-        id: 'b2-arac',
-        category: 'Araç/Servis',
-        question: 'Araçlar / servisler ile ilgili herhangi bir sıkıntı, arıza, muayene veya gecikme var mı?'
-      },
-      {
-        id: 'b2-seans',
-        category: 'Seans/Öğrenci',
-        question: 'Günlük seans sayısı ile ilgili sıkıntı, toplu iptal veya devamsızlık var mı?'
-      },
-      {
-        id: 'b2-personel',
-        category: 'Personel',
-        question: '2. Şube personel devam durumu, izin/rapor veya ders saatlerinde aksama var mı?'
-      },
-      {
-        id: 'b2-temizlik-kamera',
-        category: 'Genel Kontrol',
-        question: '2. Şube temizlik (WC/Odalar) ve kamera kayıt kontrolü yapıldı mı?'
-      },
-      {
-        id: 'b2-odeme-evrak',
-        category: 'Genel Kontrol',
-        question: '2. Şubede acil ödeme, fatura veya imza/evrak eksiği var mı?'
-      }
+      { id: 'b2-gorusme', category: 'Görüşme', question: 'Bugün görüşmem gereken kimse (veli, personel, kurum) var mı? Görüşme yapıldı mı?' },
+      { id: 'b2-arac', category: 'Araç/Servis', question: 'Araçlar / servisler ile ilgili herhangi bir sıkıntı, arıza, muayene veya gecikme var mı?' },
+      { id: 'b2-seans', category: 'Seans/Öğrenci', question: 'Günlük seans sayısı ile ilgili sıkıntı, toplu iptal veya devamsızlık var mı?' },
+      { id: 'b2-personel', category: 'Personel', question: '2. Şube personel devam durumu, izin/rapor veya ders saatlerinde aksama var mı?' },
+      { id: 'b2-temizlik-kamera', category: 'Genel Kontrol', question: '2. Şube temizlik (WC/Odalar) ve kamera kayıt kontrolü yapıldı mı?' },
+      { id: 'b2-odeme-evrak', category: 'Genel Kontrol', question: '2. Şubede acil ödeme, fatura veya imza/evrak eksiği var mı?' }
     ];
 
     let appState = {
       institutionName: 'Kurum Kontrol & Takip Sistemi',
       branch2Name: '2. Şube Günlük Kontrol & Sorulacak Sorular',
-      cloudConfig: { endpoint: '', secret: '' },
+      updatedAt: 0,
       cleaningTemplate: [...DEFAULT_CLEANING_AREAS],
       branch2Template: [...DEFAULT_BRANCH2_QUESTIONS],
       days: {},
@@ -855,7 +845,7 @@
       return now.toTimeString().slice(0, 8);
     }
 
-    // --- SEKME (TAB) GEÇİŞ SİSTEMİ ---
+    // --- SEKME GEÇİŞ SİSTEMİ ---
     function switchTab(tabName) {
       currentTab = tabName;
       localStorage.setItem(ACTIVE_TAB_KEY, tabName);
@@ -871,7 +861,6 @@
         }
       });
 
-      // Masaüstü buton aktiflik stili
       [...allTabs, 'tumu'].forEach(t => {
         const dBtn = document.getElementById(`deskTab-${t}`);
         if (dBtn) {
@@ -883,7 +872,6 @@
         }
       });
 
-      // Mobil alt bar aktiflik stili
       allTabs.forEach(t => {
         const mBtn = document.getElementById(`mobTab-${t}`);
         if (mBtn) {
@@ -901,25 +889,25 @@
     function createEmptyDay(dateStr) {
       let lastStudentCount = 0;
       let lastBranch2StudentCount = 0;
-      const sortedDates = Object.keys(appState.days).sort();
+      const sortedDates = Object.keys(appState.days || {}).sort();
       for (let i = sortedDates.length - 1; i >= 0; i--) {
         if (sortedDates[i] < dateStr) {
-          if (!lastStudentCount && appState.days[sortedDates[i]].studentCount > 0) {
+          if (!lastStudentCount && appState.days[sortedDates[i]]?.studentCount > 0) {
             lastStudentCount = appState.days[sortedDates[i]].studentCount;
           }
-          if (!lastBranch2StudentCount && appState.days[sortedDates[i]].branch2Students > 0) {
+          if (!lastBranch2StudentCount && appState.days[sortedDates[i]]?.branch2Students > 0) {
             lastBranch2StudentCount = appState.days[sortedDates[i]].branch2Students;
           }
         }
       }
 
       const cleaningMap = {};
-      appState.cleaningTemplate.forEach(area => {
+      (appState.cleaningTemplate || []).forEach(area => {
         cleaningMap[area.id] = { status: 'hatirlat', note: '' };
       });
 
       const branch2ChecksMap = {};
-      appState.branch2Template.forEach(q => {
+      (appState.branch2Template || []).forEach(q => {
         branch2ChecksMap[q.id] = { status: 'hatirlat', answer: '' };
       });
 
@@ -941,6 +929,17 @@
     }
 
     function ensureDayExists(dateStr) {
+      if (!appState.days) appState.days = {};
+      if (!appState.cleaningTemplate || appState.cleaningTemplate.length === 0) {
+        appState.cleaningTemplate = [...DEFAULT_CLEANING_AREAS];
+      }
+      if (!appState.branch2Template || appState.branch2Template.length === 0) {
+        appState.branch2Template = [...DEFAULT_BRANCH2_QUESTIONS];
+      }
+      if (!appState.salaries) appState.salaries = [];
+      if (!appState.urgentPayments) appState.urgentPayments = [];
+      if (!appState.pinnedNotes) appState.pinnedNotes = [];
+
       if (!appState.days[dateStr]) {
         appState.days[dateStr] = createEmptyDay(dateStr);
       } else {
@@ -953,27 +952,26 @@
         appState.branch2Template.forEach(q => {
           if (!d.branch2Checks[q.id]) d.branch2Checks[q.id] = { status: 'hatirlat', answer: '' };
         });
+        if (!d.dailyNotes) d.dailyNotes = [];
+        if (!d.camera) d.camera = { status: 'hatirlat', device: '', range: '', health: '', note: '' };
       }
       return appState.days[dateStr];
     }
 
+    // =========================================================================
+    // 3. YEREL + FIREBASE GERÇEK ZAMANLI KAYIT VE SENKRONİZASYON
+    // =========================================================================
     function loadState() {
       try {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (raw) {
           const parsed = JSON.parse(raw);
           appState = { ...appState, ...parsed };
-          if (!appState.cleaningTemplate || appState.cleaningTemplate.length === 0) {
-            appState.cleaningTemplate = [...DEFAULT_CLEANING_AREAS];
-          }
-          if (!appState.branch2Template || appState.branch2Template.length === 0) {
-            appState.branch2Template = [...DEFAULT_BRANCH2_QUESTIONS];
-          }
         } else {
           seedInitialSampleData();
         }
       } catch (e) {
-        console.error('Veri okuma hatası:', e);
+        console.error('Yerel veri okuma hatası:', e);
       }
       ensureDayExists(currentDate);
     }
@@ -987,17 +985,23 @@
       appState.salaries = [
         { id: 'sal-1', name: 'Örnek: Eğitim Personeli Maaş Ödemesi', amount: 0, dueDate: today, status: 'hatirlat', note: 'Maaş günü kontrolü' }
       ];
-      saveState(false);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
     }
 
-    let cloudSyncTimer = null;
+    let firebaseSyncTimer = null;
     function saveState(triggerCloud = true) {
       try {
+        const nowTs = Date.now();
+        appState.updatedAt = nowTs;
+        lastLocalTimestamp = nowTs;
         localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
-        updateSyncIndicator('saved', `Kaydedildi (${getTimeStr()})`);
-        if (triggerCloud && appState.cloudConfig && appState.cloudConfig.endpoint) {
-          clearTimeout(cloudSyncTimer);
-          cloudSyncTimer = setTimeout(() => pushToCloud(false), 1200);
+
+        if (triggerCloud && !isApplyingRemoteUpdate) {
+          updateSyncIndicator('syncing', 'Firebase buluta kaydediliyor...');
+          clearTimeout(firebaseSyncTimer);
+          firebaseSyncTimer = setTimeout(() => {
+            pushToFirebase(false);
+          }, 400);
         }
       } catch (e) {
         console.error('Kayıt hatası:', e);
@@ -1006,7 +1010,183 @@
 
     function manualSaveAction() {
       saveState(true);
-      showSaveToast('Tüm verileriniz başarıyla kaydedildi! (' + getTimeStr() + ')');
+      pushToFirebase(true);
+    }
+
+    // Firebase'e Veri Yazma (Önce Firestore dener, yoksa/hata verirse Realtime Database'e yazar)
+    async function pushToFirebase(showToastOnSuccess = false) {
+      const cleanPayload = JSON.parse(JSON.stringify(appState));
+
+      // 1. Önce Firestore'u dene
+      if (firestoreDocRef && activeFirebaseMode !== 'rtdb') {
+        try {
+          await firestoreDocRef.set(cleanPayload);
+          activeFirebaseMode = 'firestore';
+          hideFirebaseErrorHelp();
+          updateSyncIndicator('cloud-ok', `Firebase Senkronize (${getTimeStr()})`);
+          if (showToastOnSuccess) showSaveToast('Tüm veriler Firebase Buluta kaydedildi! (' + getTimeStr() + ')');
+          return;
+        } catch (fsErr) {
+          console.warn('Firestore yazma uyarısı, Realtime DB deneniyor:', fsErr);
+          // Eğer Firestore aktif değilse RTDB'ye geç
+          if (rtdbRef) {
+            try {
+              await rtdbRef.set(cleanPayload);
+              activeFirebaseMode = 'rtdb';
+              hideFirebaseErrorHelp();
+              updateSyncIndicator('cloud-ok', `Firebase RTDB Senkronize (${getTimeStr()})`);
+              if (showToastOnSuccess) showSaveToast('Tüm veriler Firebase Buluta kaydedildi! (' + getTimeStr() + ')');
+              return;
+            } catch (rtdbErr) {
+              handleFirebaseError(fsErr);
+            }
+          } else {
+            handleFirebaseError(fsErr);
+          }
+        }
+      } else if (rtdbRef) {
+        try {
+          await rtdbRef.set(cleanPayload);
+          activeFirebaseMode = 'rtdb';
+          hideFirebaseErrorHelp();
+          updateSyncIndicator('cloud-ok', `Firebase RTDB Senkronize (${getTimeStr()})`);
+          if (showToastOnSuccess) showSaveToast('Tüm veriler Firebase Buluta kaydedildi! (' + getTimeStr() + ')');
+        } catch (rtdbErr) {
+          handleFirebaseError(rtdbErr);
+        }
+      }
+    }
+
+    // Uygulama açıldığında veya manuel istendiğinde Firebase'den verileri çek ve canlı dinleyiciyi (onSnapshot / onValue) başlat
+    async function initFirebaseRealtimeSync() {
+      updateSyncIndicator('syncing', 'Firebase buluttan veriler çekiliyor...');
+
+      // 1. Firestore Gerçek Zamanlı Dinleyici
+      if (firestoreDocRef) {
+        firestoreDocRef.onSnapshot(
+          (docSnap) => {
+            activeFirebaseMode = 'firestore';
+            hideFirebaseErrorHelp();
+            if (docSnap.exists) {
+              const remoteData = docSnap.data();
+              applyRemoteStateIfNewer(remoteData);
+              updateSyncIndicator('cloud-ok', `Firebase Canlı Senkronize (${getTimeStr()})`);
+            } else {
+              // Bulutta henüz hiç kayıt yoksa mevcut veriyi ilk kez buluta yaz
+              pushToFirebase(false);
+            }
+          },
+          (err) => {
+            console.warn('Firestore dinleyici uyarısı, RTDB deneniyor:', err);
+            initRtdbListenerFallback(err);
+          }
+        );
+      } else {
+        initRtdbListenerFallback(new Error('Firestore başlatılamadı'));
+      }
+    }
+
+    function initRtdbListenerFallback(previousError) {
+      if (!rtdbRef) {
+        handleFirebaseError(previousError);
+        return;
+      }
+      rtdbRef.on(
+        'value',
+        (snapshot) => {
+          activeFirebaseMode = 'rtdb';
+          hideFirebaseErrorHelp();
+          const remoteData = snapshot.val();
+          if (remoteData && remoteData.days) {
+            applyRemoteStateIfNewer(remoteData);
+            updateSyncIndicator('cloud-ok', `Firebase Canlı Senkronize (${getTimeStr()})`);
+          } else {
+            pushToFirebase(false);
+          }
+        },
+        (rtdbErr) => {
+          console.error('RTDB dinleyici hatası:', rtdbErr);
+          handleFirebaseError(previousError || rtdbErr);
+        }
+      );
+    }
+
+    async function pullFromFirebase(showNotification = false) {
+      updateSyncIndicator('syncing', 'Firebase buluttan çekiliyor...');
+      try {
+        if (firestoreDocRef && activeFirebaseMode !== 'rtdb') {
+          const snap = await firestoreDocRef.get();
+          if (snap.exists) {
+            applyRemoteStateIfNewer(snap.data(), true);
+            updateSyncIndicator('cloud-ok', `Firebase'den Güncellendi (${getTimeStr()})`);
+            if (showNotification) showSaveToast('Firebase buluttaki güncel veriler yüklendi!');
+            return;
+          }
+        }
+        if (rtdbRef) {
+          const snap = await rtdbRef.once('value');
+          const val = snap.val();
+          if (val && val.days) {
+            applyRemoteStateIfNewer(val, true);
+            updateSyncIndicator('cloud-ok', `Firebase'den Güncellendi (${getTimeStr()})`);
+            if (showNotification) showSaveToast('Firebase buluttaki güncel veriler yüklendi!');
+            return;
+          }
+        }
+        if (showNotification) showSaveToast('Bulutta henüz veri yok, mevcut verileriniz gönderiliyor...');
+        await pushToFirebase(showNotification);
+      } catch (err) {
+        handleFirebaseError(err);
+        if (showNotification) alert('Firebase bağlantı uyarısı: ' + err.message);
+      }
+    }
+
+    function applyRemoteStateIfNewer(remoteData, forceApply = false) {
+      if (!remoteData || !remoteData.days) return;
+      const remoteTs = Number(remoteData.updatedAt || 0);
+
+      // Kendi gönderdiğimiz değişikliği tekrar üstüne yazıp input odağını bozmamak için kontrol
+      if (!forceApply && remoteTs > 0 && remoteTs === lastLocalTimestamp) {
+        return;
+      }
+
+      isApplyingRemoteUpdate = true;
+      appState = {
+        ...appState,
+        ...remoteData
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
+      ensureDayExists(currentDate);
+      renderAll();
+      isApplyingRemoteUpdate = false;
+    }
+
+    function handleFirebaseError(err) {
+      console.error('Firebase hatası:', err);
+      updateSyncIndicator('error', `Cihaza Kaydedildi (Firebase İzni Bekleniyor)`);
+      const badge = document.getElementById('modalFirebaseBadge');
+      const helpBox = document.getElementById('firebaseErrorHelp');
+      const detail = document.getElementById('firebaseErrorDetail');
+      if (badge) {
+        badge.textContent = 'İzin / Kurulum Gerekli';
+        badge.className = 'text-xs font-bold px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-800';
+      }
+      if (helpBox && detail) {
+        helpBox.classList.remove('hidden');
+        detail.textContent = `Hata Detayı: ${err?.message || 'Veritabanı erişim hatası'}`;
+      }
+    }
+
+    function hideFirebaseErrorHelp() {
+      const badge = document.getElementById('modalFirebaseBadge');
+      const helpBox = document.getElementById('firebaseErrorHelp');
+      if (badge) {
+        badge.textContent = 'Canlı Senkronize';
+        badge.className = 'text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800';
+      }
+      if (helpBox) {
+        helpBox.classList.add('hidden');
+      }
     }
 
     let toastTimeout = null;
@@ -1030,20 +1210,23 @@
       if (!dot || !text) return;
 
       if (state === 'syncing') {
-        dot.className = 'w-2 h-2 rounded-full bg-amber-400 animate-ping inline-block';
-        text.textContent = message || 'Bulut ile eşitleniyor...';
+        dot.className = 'w-2 h-2 rounded-full bg-amber-400 animate-ping inline-block shrink-0';
+        text.textContent = message || 'Firebase ile eşitleniyor...';
       } else if (state === 'cloud-ok') {
-        dot.className = 'w-2 h-2 rounded-full bg-emerald-400 inline-block';
-        text.textContent = message || `Bulut + Cihaz Kaydedildi (${getTimeStr()})`;
+        dot.className = 'w-2 h-2 rounded-full bg-emerald-400 inline-block shrink-0';
+        text.textContent = message || `Firebase Senkronize (${getTimeStr()})`;
       } else if (state === 'error') {
-        dot.className = 'w-2 h-2 rounded-full bg-red-400 inline-block';
-        text.textContent = message || 'Cihaza Kaydedildi (Bulut Hatası)';
+        dot.className = 'w-2 h-2 rounded-full bg-rose-400 inline-block shrink-0';
+        text.textContent = message || 'Cihaza Kaydedildi (Bulut Uyarısı)';
       } else {
-        dot.className = 'w-2 h-2 rounded-full bg-emerald-400 inline-block';
-        text.textContent = message || `Otomatik Kaydedildi (${getTimeStr()})`;
+        dot.className = 'w-2 h-2 rounded-full bg-emerald-400 inline-block shrink-0';
+        text.textContent = message || `Kaydedildi (${getTimeStr()})`;
       }
     }
 
+    // =========================================================================
+    // 4. TARİH, FİLTRE VE VERİ GÜNCELLEME FONKSİYONLARI
+    // =========================================================================
     function onDateChange(val) {
       if (!val) return;
       currentDate = val;
@@ -1442,6 +1625,9 @@
       showSaveToast('Dünkü veriler bugüne aktarıldı!');
     }
 
+    // =========================================================================
+    // 5. EKRAN ÇİZİMİ (RENDER)
+    // =========================================================================
     function renderAll() {
       const day = ensureDayExists(currentDate);
 
@@ -1462,22 +1648,23 @@
         document.getElementById('salaryDateInput').value = currentDate;
       }
 
-      document.getElementById('dailySessionsInput').value = day.dailySessions || 0;
-      document.getElementById('indSessionsInput').value = day.indSessions || 0;
-      document.getElementById('grpSessionsInput').value = day.grpSessions || 0;
-      document.getElementById('studentCountInput').value = day.studentCount || 0;
-      document.getElementById('attendingStudentsInput').value = day.attendingStudents || 0;
-      document.getElementById('makeupStudentsInput').value = day.makeupStudents || 0;
+      // Aktif olarak yazılan input'un imlecini bozmamak için kontrol ederek güncelle
+      setInputValueIfNotFocused('dailySessionsInput', day.dailySessions || 0);
+      setInputValueIfNotFocused('indSessionsInput', day.indSessions || 0);
+      setInputValueIfNotFocused('grpSessionsInput', day.grpSessions || 0);
+      setInputValueIfNotFocused('studentCountInput', day.studentCount || 0);
+      setInputValueIfNotFocused('attendingStudentsInput', day.attendingStudents || 0);
+      setInputValueIfNotFocused('makeupStudentsInput', day.makeupStudents || 0);
       document.getElementById('mainStudentSummary').textContent = day.studentCount || 0;
 
-      document.getElementById('branch2SessionsInput').value = day.branch2Sessions || 0;
-      document.getElementById('branch2StudentsInput').value = day.branch2Students || 0;
+      setInputValueIfNotFocused('branch2SessionsInput', day.branch2Sessions || 0);
+      setInputValueIfNotFocused('branch2StudentsInput', day.branch2Students || 0);
       document.getElementById('branch2StudentSummary').textContent = day.branch2Students || 0;
 
-      document.getElementById('camDeviceInput').value = day.camera?.device || '';
-      document.getElementById('camRangeInput').value = day.camera?.range || '';
-      document.getElementById('camHealthInput').value = day.camera?.health || '';
-      document.getElementById('camNoteInput').value = day.camera?.note || '';
+      setInputValueIfNotFocused('camDeviceInput', day.camera?.device || '');
+      setInputValueIfNotFocused('camRangeInput', day.camera?.range || '');
+      setInputValueIfNotFocused('camHealthInput', day.camera?.health || '');
+      setInputValueIfNotFocused('camNoteInput', day.camera?.note || '');
       document.getElementById('cameraStatusControl').innerHTML = renderStatusButtons(
         day.camera?.status || 'hatirlat',
         `setCameraStatus('__STATUS__')`
@@ -1493,6 +1680,13 @@
       renderHistoryTable();
 
       lucide.createIcons();
+    }
+
+    function setInputValueIfNotFocused(id, val) {
+      const el = document.getElementById(id);
+      if (el && document.activeElement !== el) {
+        el.value = val;
+      }
     }
 
     function renderBranch2Questions(day) {
@@ -1792,7 +1986,6 @@
     function renderSummaryCards() {
       const day = ensureDayExists(currentDate);
 
-      // Aylık ortalama
       const monthPrefix = currentDate.slice(0, 7);
       let monthlyTotal = 0;
       let monthlyActiveDays = 0;
@@ -1810,7 +2003,6 @@
       document.getElementById('quickDailySes').textContent = day.dailySessions || 0;
       document.getElementById('quickAvgSes').textContent = monthlyAvg;
 
-      // Temizlik sayılarını hesapla
       const totalAreas = appState.cleaningTemplate.length;
       let cleanedAreas = 0;
       let pendingClean = 0;
@@ -1833,7 +2025,6 @@
       document.getElementById('cleaningProgressText').textContent = `${cleanedAreas}/${totalAreas}`;
       document.getElementById('quickCleanStat').textContent = `${cleanedAreas}/${totalAreas}`;
 
-      // 2. Şube sayıları
       const totalB2 = appState.branch2Template.length;
       let doneB2 = 0;
       let pendingB2 = 0;
@@ -1845,7 +2036,6 @@
       });
       document.getElementById('quickB2Stat').textContent = `${doneB2}/${totalB2}`;
 
-      // Ödemeler sayıları
       let pendingMoney = 0;
       let pendingPayCount = 0;
       (appState.urgentPayments || []).forEach(u => {
@@ -1869,7 +2059,6 @@
       });
       document.getElementById('quickPayStat').textContent = formatCurrency(pendingMoney);
 
-      // Notlar sayıları
       let pendingNotesCount = 0;
       const allNotes = [...(appState.pinnedNotes || []), ...(day.dailyNotes || [])];
       allNotes.forEach(n => {
@@ -1878,12 +2067,10 @@
         else { pendingNotesCount++; countRemind++; }
       });
 
-      // Üst filtre sayaçları
       document.getElementById('topRemindCount').textContent = countRemind;
       document.getElementById('topMissingCount').textContent = countMissing;
       document.getElementById('topDoneCount').textContent = countDone;
 
-      // Sekme rozetleri (Badges)
       setBadgeValue('sube2', pendingB2);
       setBadgeValue('temizlik', pendingClean);
       setBadgeValue('odemeler', pendingPayCount);
@@ -2017,8 +2204,6 @@
     function openCloudModal() {
       document.getElementById('institutionNameInput').value = appState.institutionName || '';
       document.getElementById('branch2NameInput').value = appState.branch2Name || '';
-      document.getElementById('cloudEndpointInput').value = appState.cloudConfig?.endpoint || '';
-      document.getElementById('cloudSecretInput').value = appState.cloudConfig?.secret || '';
       const modal = document.getElementById('cloudModal');
       modal.classList.remove('hidden');
       modal.classList.add('flex');
@@ -2040,78 +2225,6 @@
       showSaveToast('Kurum başlıkları kaydedildi!');
     }
 
-    function saveCloudConfig() {
-      appState.cloudConfig = {
-        endpoint: document.getElementById('cloudEndpointInput').value.trim(),
-        secret: document.getElementById('cloudSecretInput').value.trim()
-      };
-      saveState(false);
-      showSaveToast('Bulut bağlantı ayarları kaydedildi!');
-    }
-
-    async function pushToCloud(showAlert = false) {
-      const url = appState.cloudConfig?.endpoint;
-      if (!url) {
-        if (showAlert) alert('Lütfen önce geçerli bir Ücretsiz Bulut URL adresi girin.');
-        return;
-      }
-      try {
-        updateSyncIndicator('syncing');
-        const headers = { 'Content-Type': 'application/json' };
-        if (appState.cloudConfig.secret) {
-          headers['X-Master-Key'] = appState.cloudConfig.secret;
-          headers['Authorization'] = `Bearer ${appState.cloudConfig.secret}`;
-        }
-        const res = await fetch(url, {
-          method: url.includes('api.npoint.io') ? 'POST' : 'PUT',
-          headers,
-          body: JSON.stringify(appState)
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        updateSyncIndicator('cloud-ok');
-        if (showAlert) showSaveToast('Verileriniz başarıyla buluta kaydedildi!');
-      } catch (err) {
-        console.error(err);
-        updateSyncIndicator('error');
-        if (showAlert) alert('Buluta gönderilirken hata oluştu: ' + err.message);
-      }
-    }
-
-    async function pullFromCloud(showAlert = false) {
-      const url = appState.cloudConfig?.endpoint;
-      if (!url) {
-        if (showAlert) alert('Lütfen önce geçerli bir Ücretsiz Bulut URL adresi girin.');
-        return;
-      }
-      try {
-        updateSyncIndicator('syncing', 'Buluttan veriler çekiliyor...');
-        const headers = {};
-        if (appState.cloudConfig.secret) {
-          headers['X-Master-Key'] = appState.cloudConfig.secret;
-          headers['Authorization'] = `Bearer ${appState.cloudConfig.secret}`;
-        }
-        const res = await fetch(url, { headers });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        const payload = data.record ? data.record : data;
-        if (payload && payload.days) {
-          const keepCloud = appState.cloudConfig;
-          appState = { ...appState, ...payload, cloudConfig: keepCloud };
-          saveState(false);
-          ensureDayExists(currentDate);
-          renderAll();
-          updateSyncIndicator('cloud-ok');
-          if (showAlert) showSaveToast('Buluttaki güncel veriler yüklendi!');
-        } else {
-          if (showAlert) alert('Bulutta henüz kayıtlı veri bulunamadı.');
-        }
-      } catch (err) {
-        console.error(err);
-        updateSyncIndicator('error');
-        if (showAlert) alert('Buluttan veri çekilirken hata oluştu: ' + err.message);
-      }
-    }
-
     function downloadJsonBackup() {
       const blob = new Blob([JSON.stringify(appState, null, 2)], { type: 'application/json' });
       const a = document.createElement('a');
@@ -2129,10 +2242,10 @@
           const imported = JSON.parse(e.target.result);
           if (imported && imported.days) {
             appState = imported;
-            saveState();
+            saveState(true);
             ensureDayExists(currentDate);
             renderAll();
-            showSaveToast('Yedek dosyası başarıyla yüklendi!');
+            showSaveToast('Yedek dosyası yüklendi ve Firebase ile eşitlendi!');
             closeCloudModal();
           } else {
             alert('Geçersiz yedek dosyası formatı.');
@@ -2162,9 +2275,8 @@
       if (monthInput) monthInput.value = currentDate.slice(0, 7);
       switchTab(currentTab);
       renderAll();
-      if (appState.cloudConfig?.endpoint) {
-        pullFromCloud(false);
-      }
+      // Uygulama açıldığında doğrudan resmi Firebase SDK üzerinden gerçek zamanlı senkronizasyonu başlat
+      initFirebaseRealtimeSync();
     });
   </script>
 </body>
