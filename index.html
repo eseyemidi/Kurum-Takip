@@ -1,0 +1,2110 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kurum & 2. Şube Günlük Kontrol Paneli</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- SheetJS for Excel Export -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #f1f5f9;
+      color: #0f172a;
+    }
+    @media print {
+      .no-print { display: none !important; }
+      body { background-color: #ffffff; }
+      .print-card { box-shadow: none !important; border: 1px solid #cbd5e1 !important; break-inside: avoid; }
+    }
+    .status-tamamlandi { background-color: #dcfce7; color: #166534; border-color: #86efac; }
+    .status-eksik { background-color: #fee2e2; color: #991b1b; border-color: #fca5a5; }
+    .status-hatirlat { background-color: #fef3c7; color: #92400e; border-color: #fde047; }
+    .status-bekliyor { background-color: #f1f5f9; color: #475569; border-color: #cbd5e1; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- Üst Menü / Header -->
+  <header class="bg-slate-900 text-white shadow-lg sticky top-0 z-30 no-print">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <div class="bg-indigo-600 p-2.5 rounded-xl shadow-inner">
+          <i data-lucide="building-2" class="w-6 h-6 text-white"></i>
+        </div>
+        <div>
+          <h1 class="text-xl font-bold tracking-tight" id="institutionNameDisplay">Kurum Kontrol & Takip Sistemi</h1>
+          <p class="text-xs text-slate-400 flex items-center gap-1.5">
+            <span id="syncIndicator" class="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span>
+            <span id="syncStatusText">Yerel Kayıt Aktif (Otomatik Kaydediliyor)</span>
+          </p>
+        </div>
+      </div>
+
+      <!-- Tarih Seçici & Hızlı Butonlar -->
+      <div class="flex flex-wrap items-center gap-2 sm:gap-3">
+        <div class="flex items-center bg-slate-800 rounded-xl p-1 border border-slate-700">
+          <button onclick="changeDate(-1)" class="p-2 hover:bg-slate-700 rounded-lg text-slate-300 hover:text-white transition" title="Önceki Gün">
+            <i data-lucide="chevron-left" class="w-4 h-4"></i>
+          </button>
+          <input type="date" id="selectedDateInput" onchange="onDateChange(this.value)" class="bg-transparent text-white text-sm font-medium px-2 py-1 focus:outline-none cursor-pointer" />
+          <button onclick="changeDate(1)" class="p-2 hover:bg-slate-700 rounded-lg text-slate-300 hover:text-white transition" title="Sonraki Gün">
+            <i data-lucide="chevron-right" class="w-4 h-4"></i>
+          </button>
+          <button onclick="goToToday()" class="text-xs bg-indigo-600 hover:bg-indigo-500 text-white px-2.5 py-1.5 rounded-lg font-medium ml-1 transition">
+            Bugün
+          </button>
+        </div>
+
+        <!-- Excel & PDF & Bulut Butonları -->
+        <button onclick="exportToExcel()" class="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium px-3 py-2 rounded-xl transition shadow-sm" title="Excel İndir">
+          <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+          <span class="hidden md:inline">Excel</span>
+        </button>
+
+        <button onclick="window.print()" class="flex items-center gap-1.5 bg-slate-700 hover:bg-slate-600 text-white text-sm font-medium px-3 py-2 rounded-xl transition shadow-sm" title="PDF / Yazdır">
+          <i data-lucide="printer" class="w-4 h-4"></i>
+          <span class="hidden md:inline">PDF / Yazdır</span>
+        </button>
+
+        <button onclick="openCloudModal()" class="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium px-3 py-2 rounded-xl transition shadow-sm">
+          <i data-lucide="cloud" class="w-4 h-4"></i>
+          <span class="hidden sm:inline">Ücretsiz Bulut & Yedek</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Yazdırma Başlığı (Sadece PDF/Yazdır sırasında görünür) -->
+  <div class="hidden print:block max-w-7xl mx-auto px-6 pt-6 pb-2 border-b border-slate-300 mb-4">
+    <h1 class="text-2xl font-bold text-slate-900">Kurum & 2. Şube Günlük Kontrol ve Yönetim Raporu</h1>
+    <p class="text-sm text-slate-600 mt-1">Rapor Tarihi: <span id="printDateLabel" class="font-semibold"></span></p>
+  </div>
+
+  <!-- Ana İçerik -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+    <!-- Hatırlatıcı / Eksik Uyarı Bandı -->
+    <div id="alertBanner" class="hidden bg-amber-50 border border-amber-300 rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div class="flex items-start sm:items-center gap-3">
+        <div class="bg-amber-100 text-amber-700 p-2 rounded-xl">
+          <i data-lucide="bell-ring" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <h3 class="text-sm font-bold text-amber-900" id="alertBannerTitle">Dikkat Edilmesi Gereken Maddeler Var!</h3>
+          <p class="text-xs text-amber-800 mt-0.5" id="alertBannerDesc"></p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 no-print">
+        <button onclick="setFilterStatus('hatirlat')" class="text-xs bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded-lg font-medium transition">
+          Hatırlatmaları Göster
+        </button>
+        <button onclick="setFilterStatus('eksik')" class="text-xs bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg font-medium transition">
+          Eksikleri Göster
+        </button>
+        <button onclick="setFilterStatus('all')" class="text-xs bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 px-2.5 py-1.5 rounded-lg font-medium transition">
+          Tümü
+        </button>
+      </div>
+    </div>
+
+    <!-- Üst İstatistik ve Günlük Sayı Kartları -->
+    <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <!-- Günlük Seans Sayısı + Aylık Ortalama -->
+      <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200/80 print-card flex flex-col justify-between">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-semibold uppercase tracking-wider text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg">Günlük & Aylık Seans</span>
+          <button onclick="toggleMonthlyModal()" class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-1 no-print" title="Aylık Detaylı Seans Tablosu">
+            <span>Aylık Detay</span>
+            <i data-lucide="bar-chart-3" class="w-4 h-4"></i>
+          </button>
+        </div>
+        <div class="my-3 flex items-center gap-3">
+          <input type="number" min="0" id="dailySessionsInput" oninput="updateDailyMetrics()"
+            class="text-3xl font-bold text-slate-900 w-24 bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+            placeholder="0" />
+          <div class="flex flex-col text-xs text-slate-600 space-y-0.5">
+            <span>Bu Ay Toplam: <strong id="monthlySessionsTotal" class="text-indigo-700 text-sm">0</strong></span>
+            <span>Günlük Ort.: <strong id="monthlySessionsAvg" class="text-emerald-700 text-sm">0</strong> <span id="monthlyActiveDaysLabel" class="text-[11px] text-slate-400">(0 gün)</span></span>
+          </div>
+        </div>
+        <div class="flex items-center justify-between gap-2 text-xs text-slate-500 border-t border-slate-100 pt-2.5">
+          <div class="flex items-center gap-1">
+            <span>Bireysel:</span>
+            <input type="number" min="0" id="indSessionsInput" oninput="updateSubSessions()" class="w-12 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 text-center font-medium text-slate-700" placeholder="0">
+          </div>
+          <div class="flex items-center gap-1">
+            <span>Grup:</span>
+            <input type="number" min="0" id="grpSessionsInput" oninput="updateSubSessions()" class="w-12 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 text-center font-medium text-slate-700" placeholder="0">
+          </div>
+        </div>
+      </div>
+
+      <!-- Mevcut Öğrenci Sayısı -->
+      <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200/80 print-card flex flex-col justify-between">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-semibold uppercase tracking-wider text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-lg">Mevcut Öğrenci</span>
+          <i data-lucide="users" class="w-5 h-5 text-emerald-500"></i>
+        </div>
+        <div class="my-3 flex items-center gap-3">
+          <input type="number" min="0" id="studentCountInput" oninput="updateDailyMetrics()"
+            class="text-3xl font-bold text-slate-900 w-24 bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+            placeholder="0" />
+          <div class="flex flex-col text-xs text-slate-500 space-y-0.5">
+            <span>Merkez Kayıtlı</span>
+            <span class="text-slate-700 font-medium">2. Şube: <strong id="branch2StudentSummary">0</strong> öğrenci</span>
+          </div>
+        </div>
+        <div class="flex items-center justify-between gap-2 text-xs text-slate-500 border-t border-slate-100 pt-2.5">
+          <div class="flex items-center gap-1">
+            <span>Bugün Gelen:</span>
+            <input type="number" min="0" id="attendingStudentsInput" oninput="updateDailyMetrics()" class="w-14 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 text-center font-medium text-slate-700" placeholder="0">
+          </div>
+          <div class="flex items-center gap-1">
+            <span>Telafi:</span>
+            <input type="number" min="0" id="makeupStudentsInput" oninput="updateDailyMetrics()" class="w-12 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 text-center font-medium text-slate-700" placeholder="0">
+          </div>
+        </div>
+      </div>
+
+      <!-- Günlük Temizlik & Kamera Özeti -->
+      <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200/80 print-card flex flex-col justify-between">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-semibold uppercase tracking-wider text-sky-600 bg-sky-50 px-2.5 py-1 rounded-lg">Temizlik & Kamera</span>
+          <i data-lucide="shield-check" class="w-5 h-5 text-sky-500"></i>
+        </div>
+        <div class="my-3">
+          <div class="flex items-baseline justify-between">
+            <span class="text-2xl font-bold text-slate-900" id="cleaningProgressText">0 / 0</span>
+            <span class="text-xs font-semibold px-2 py-0.5 rounded-full" id="cameraBadge">Kamera: Bekliyor</span>
+          </div>
+          <div class="w-full bg-slate-100 h-2.5 rounded-full mt-2 overflow-hidden">
+            <div id="cleaningProgressBar" class="bg-sky-500 h-full rounded-full transition-all duration-300" style="width: 0%"></div>
+          </div>
+        </div>
+        <div class="text-xs text-slate-500 border-t border-slate-100 pt-2.5 flex justify-between">
+          <span>Temizlenen Alanlar</span>
+          <span id="cleaningMissingCount" class="text-red-600 font-medium">0 Eksik</span>
+        </div>
+      </div>
+
+      <!-- Ödemeler & 2. Şube / Hatırlatmalar Özeti -->
+      <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200/80 print-card flex flex-col justify-between">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-semibold uppercase tracking-wider text-amber-600 bg-amber-50 px-2.5 py-1 rounded-lg">Ödeme & Görevler</span>
+          <i data-lucide="wallet" class="w-5 h-5 text-amber-500"></i>
+        </div>
+        <div class="my-3">
+          <div class="text-2xl font-bold text-slate-900" id="pendingPaymentsAmount">0 ₺</div>
+          <p class="text-xs text-slate-500 mt-0.5">Bekleyen Maaş & Acil Ödeme Toplamı</p>
+        </div>
+        <div class="text-xs border-t border-slate-100 pt-2.5 flex items-center justify-between">
+          <span class="text-amber-700 font-medium"><strong id="remindCountStat">0</strong> Hatırlat</span>
+          <span class="text-red-600 font-medium"><strong id="missingCountStat">0</strong> Eksik</span>
+          <span class="text-emerald-700 font-medium"><strong id="doneCountStat">0</strong> Tamam</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- YENİ: AYLIK SEANS ANALİZİ VE ORTALAMA PANELİ -->
+    <section class="bg-white rounded-2xl shadow-sm border border-indigo-200/80 overflow-hidden print-card">
+      <div class="px-5 py-4 border-b border-slate-100 bg-gradient-to-r from-indigo-50/70 via-white to-emerald-50/50 flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center gap-2.5">
+          <div class="bg-indigo-600 text-white p-2 rounded-xl shadow-sm">
+            <i data-lucide="trending-up" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h2 class="text-base font-bold text-slate-900 flex items-center gap-2">
+              <span>Aylık Seans Takibi & Ortalama Analizi</span>
+              <span id="selectedMonthBadge" class="text-xs bg-indigo-100 text-indigo-800 px-2.5 py-0.5 rounded-full font-semibold"></span>
+            </h2>
+            <p class="text-xs text-slate-500">Günlük girilen seansların aylık toplamı, günlük ortalaması ve şube dağılımı</p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <label class="text-xs font-semibold text-slate-600">Ay Seçimi:</label>
+          <input type="month" id="analyticsMonthInput" onchange="renderMonthlyAnalytics()"
+            class="text-xs font-semibold bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+        </div>
+      </div>
+
+      <div class="p-5 space-y-4">
+        <!-- Aylık Özet Metrik Kutuları -->
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div class="bg-indigo-50/60 border border-indigo-100 rounded-xl p-3">
+            <span class="text-[11px] font-semibold text-indigo-600 uppercase">Merkez Aylık Toplam</span>
+            <div class="text-xl font-bold text-slate-900 mt-1" id="mStatMainTotal">0</div>
+            <span class="text-[11px] text-slate-500" id="mStatMainSub">Bireysel: 0 | Grup: 0</span>
+          </div>
+
+          <div class="bg-emerald-50/60 border border-emerald-100 rounded-xl p-3">
+            <span class="text-[11px] font-semibold text-emerald-700 uppercase">Merkez Günlük Ortalama</span>
+            <div class="text-xl font-bold text-emerald-800 mt-1" id="mStatMainAvg">0</div>
+            <span class="text-[11px] text-slate-500" id="mStatActiveDays">0 aktif iş günü</span>
+          </div>
+
+          <div class="bg-amber-50/60 border border-amber-100 rounded-xl p-3">
+            <span class="text-[11px] font-semibold text-amber-800 uppercase">En Yüksek / En Düşük</span>
+            <div class="text-base font-bold text-slate-900 mt-1" id="mStatMinMax">0 / 0</div>
+            <span class="text-[11px] text-slate-500" id="mStatMaxDate">En yoğun gün: -</span>
+          </div>
+
+          <div class="bg-purple-50/60 border border-purple-100 rounded-xl p-3">
+            <span class="text-[11px] font-semibold text-purple-700 uppercase">2. Şube Aylık Toplam</span>
+            <div class="text-xl font-bold text-purple-900 mt-1" id="mStatBranch2Total">0</div>
+            <span class="text-[11px] text-slate-500" id="mStatBranch2Days">0 aktif gün</span>
+          </div>
+
+          <div class="bg-fuchsia-50/60 border border-fuchsia-100 rounded-xl p-3">
+            <span class="text-[11px] font-semibold text-fuchsia-700 uppercase">2. Şube Günlük Ort.</span>
+            <div class="text-xl font-bold text-fuchsia-900 mt-1" id="mStatBranch2Avg">0</div>
+            <span class="text-[11px] text-slate-500">2. Şube ortalaması</span>
+          </div>
+
+          <div class="bg-slate-900 text-white rounded-xl p-3">
+            <span class="text-[11px] font-semibold text-indigo-300 uppercase">İki Şube Genel Toplam</span>
+            <div class="text-xl font-bold text-white mt-1" id="mStatCombinedTotal">0</div>
+            <span class="text-[11px] text-slate-300" id="mStatCombinedAvg">Genel Ort: 0 / gün</span>
+          </div>
+        </div>
+
+        <!-- Günlük Seans Çubuk Grafiği / Yatay Takvim Görünümü -->
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-semibold text-slate-600">Seçili Ayın Günlük Seans Dağılımı (Güne tıklayarak o güne gidebilirsiniz)</span>
+            <div class="flex items-center gap-3 text-[11px] text-slate-500">
+              <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-sm bg-indigo-600 inline-block"></span> Merkez Seans</span>
+              <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-sm bg-purple-500 inline-block"></span> 2. Şube Seans</span>
+            </div>
+          </div>
+          <div id="monthlyDailyBarsContainer" class="flex items-end gap-1.5 overflow-x-auto pb-2 pt-4 px-2 bg-slate-50 rounded-xl border border-slate-200/80 min-h-[120px]"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- YENİ: 2. ŞUBE GÜNLÜK HATIRLATMA, SORULACAK SORULAR VE KONTROL ALANI -->
+    <section class="bg-white rounded-2xl shadow-sm border-2 border-purple-200 overflow-hidden print-card">
+      <div class="px-5 py-4 border-b border-purple-100 bg-gradient-to-r from-purple-50 via-fuchsia-50/40 to-white flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center gap-3">
+          <div class="bg-purple-600 text-white p-2.5 rounded-xl shadow-sm">
+            <i data-lucide="git-branch" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <h2 class="text-base font-bold text-slate-900" id="branch2TitleDisplay">2. Şube Günlük Kontrol & Sorulacak Sorular</h2>
+              <span class="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800" id="branch2ProgressBadge">0 / 0 Kontrol Edildi</span>
+            </div>
+            <p class="text-xs text-slate-600">2. şube için günlük sorulacak sorular, görüşmeler, araç/servis durumu ve seans kontrolü</p>
+          </div>
+        </div>
+
+        <!-- 2. Şube Günlük Seans ve Öğrenci Hızlı Giriş -->
+        <div class="flex flex-wrap items-center gap-3 bg-white px-3.5 py-2 rounded-xl border border-purple-200 shadow-sm">
+          <div class="flex items-center gap-1.5">
+            <span class="text-xs font-semibold text-purple-800">2. Şube Bugünkü Seans:</span>
+            <input type="number" min="0" id="branch2SessionsInput" oninput="updateBranch2Metrics()"
+              class="w-16 text-sm font-bold text-purple-900 bg-purple-50 border border-purple-300 rounded-lg px-2 py-1 text-center focus:outline-none focus:ring-2 focus:ring-purple-500"
+              placeholder="0" />
+          </div>
+          <div class="h-4 w-px bg-purple-200"></div>
+          <div class="flex items-center gap-1.5">
+            <span class="text-xs font-semibold text-purple-800">2. Şube Öğrenci:</span>
+            <input type="number" min="0" id="branch2StudentsInput" oninput="updateBranch2Metrics()"
+              class="w-16 text-sm font-bold text-purple-900 bg-purple-50 border border-purple-300 rounded-lg px-2 py-1 text-center focus:outline-none focus:ring-2 focus:ring-purple-500"
+              placeholder="0" />
+          </div>
+          <button onclick="markAllBranch2('tamamlandi')" class="text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold px-2.5 py-1 rounded-lg border border-emerald-200 transition no-print">
+            Tümünü Tamamla
+          </button>
+        </div>
+      </div>
+
+      <div class="p-5 space-y-4">
+        <!-- 2. Şube Sorular Grid Listesi -->
+        <div id="branch2QuestionsContainer" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
+
+        <!-- 2. Şubeye Yeni Soru / Hatırlatma Maddesi Ekleme -->
+        <div class="pt-3 border-t border-purple-100 flex flex-wrap sm:flex-nowrap items-center gap-2 no-print">
+          <select id="newBranch2Category" class="text-xs font-semibold bg-purple-50 border border-purple-200 rounded-xl px-3 py-2 text-purple-900 focus:outline-none">
+            <option value="Görüşme">📞 Görüşme</option>
+            <option value="Araç/Servis">🚐 Araç / Servis</option>
+            <option value="Seans/Öğrenci">📊 Seans / Öğrenci</option>
+            <option value="Personel">👩‍🏫 Personel</option>
+            <option value="Genel Kontrol">📋 Genel Kontrol</option>
+          </select>
+          <input type="text" id="newBranch2QuestionInput"
+            placeholder="2. Şube için her gün sorulacak yeni soru veya hatırlatma ekle (Örn: Bugün iptal edilen seans telafisi planlandı mı?)..."
+            class="flex-1 text-sm bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
+            onkeydown="if(event.key==='Enter') addBranch2Question()" />
+          <button onclick="addBranch2Question()" class="bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold px-4 py-2.5 rounded-xl transition flex items-center gap-1.5 whitespace-nowrap">
+            <i data-lucide="plus" class="w-4 h-4"></i> Soru / Kontrol Ekle
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Durum Filtre Çubuğu -->
+    <section class="bg-white rounded-2xl p-3 shadow-sm border border-slate-200/80 flex flex-wrap items-center justify-between gap-3 no-print">
+      <div class="flex items-center gap-1.5 flex-wrap">
+        <span class="text-xs font-semibold text-slate-500 px-2">Görünüm Filtresi:</span>
+        <button onclick="setFilterStatus('all')" id="filterBtn-all" class="text-xs font-semibold px-3 py-1.5 rounded-xl bg-slate-900 text-white transition">
+          Tümü
+        </button>
+        <button onclick="setFilterStatus('tamamlandi')" id="filterBtn-tamamlandi" class="text-xs font-semibold px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition flex items-center gap-1">
+          <span class="w-2 h-2 rounded-full bg-emerald-500"></span> Tamamlanmış
+        </button>
+        <button onclick="setFilterStatus('eksik')" id="filterBtn-eksik" class="text-xs font-semibold px-3 py-1.5 rounded-xl bg-red-50 text-red-700 hover:bg-red-100 transition flex items-center gap-1">
+          <span class="w-2 h-2 rounded-full bg-red-500"></span> Eksik / Sıkıntı Var
+        </button>
+        <button onclick="setFilterStatus('hatirlat')" id="filterBtn-hatirlat" class="text-xs font-semibold px-3 py-1.5 rounded-xl bg-amber-50 text-amber-800 hover:bg-amber-100 transition flex items-center gap-1">
+          <span class="w-2 h-2 rounded-full bg-amber-500"></span> Hatırlat / Sorulacak
+        </button>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <button onclick="copyFromPreviousDay()" class="text-xs font-medium text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-xl transition flex items-center gap-1.5">
+          <i data-lucide="copy" class="w-3.5 h-3.5"></i> Dünkü Not/Maddeleri Aktar
+        </button>
+      </div>
+    </section>
+
+    <!-- Ana Modüller Grid (Sol: Günlük Kontroller, Sağ: Finans & Notlar) -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+      <!-- SOL SÜTUN (7 Sütun): Temizlik Alanları & Kamera Yedekleme -->
+      <div class="lg:col-span-7 space-y-6">
+
+        <!-- 1. DETAYLI TEMİZLİK KONTROLÜ (WC, Odalar, Koridor vb.) -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden print-card">
+          <div class="px-5 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2 bg-slate-50/50">
+            <div class="flex items-center gap-2.5">
+              <div class="bg-sky-100 text-sky-600 p-2 rounded-xl">
+                <i data-lucide="sparkles" class="w-5 h-5"></i>
+              </div>
+              <div>
+                <h2 class="text-base font-bold text-slate-900">Günlük Temizlik Kontrol Listesi</h2>
+                <p class="text-xs text-slate-500">WC, Bireysel Odalar, Grup Odaları, Bekleme Salonu ve ortak alanlar</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-2 no-print">
+              <button onclick="markAllCleaning('tamamlandi')" class="text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-medium px-2.5 py-1.5 rounded-lg border border-emerald-200 transition">
+                Tümünü Tamamlandı Yap
+              </button>
+            </div>
+          </div>
+
+          <div class="p-5 space-y-3">
+            <!-- Alan Listesi -->
+            <div id="cleaningListContainer" class="space-y-2.5"></div>
+
+            <!-- Yeni Temizlik Alanı Ekleme -->
+            <div class="pt-3 border-t border-slate-100 flex flex-wrap sm:flex-nowrap items-center gap-2 no-print">
+              <input type="text" id="newCleaningAreaInput" placeholder="Yeni alan ekle (Örn: 3. Kat WC, Oyun Odası, Bahçe)..."
+                class="flex-1 text-sm bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                onkeydown="if(event.key==='Enter') addCleaningArea()" />
+              <button onclick="addCleaningArea()" class="bg-sky-600 hover:bg-sky-500 text-white text-sm font-medium px-4 py-2 rounded-xl transition flex items-center gap-1.5 whitespace-nowrap">
+                <i data-lucide="plus" class="w-4 h-4"></i> Alan Ekle
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. KAMERA KAYITLARI YEDEKLEME VE GÜVENLİK KONTROLÜ -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden print-card">
+          <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+            <div class="flex items-center gap-2.5">
+              <div class="bg-violet-100 text-violet-600 p-2 rounded-xl">
+                <i data-lucide="video" class="w-5 h-5"></i>
+              </div>
+              <div>
+                <h2 class="text-base font-bold text-slate-900">Kamera Kayıtları & Yedekleme Kontrolü</h2>
+                <p class="text-xs text-slate-500">NVR/DVR kayıt cihazı kontrolü, yedekleme durumu ve arıza notları</p>
+              </div>
+            </div>
+            <!-- Kamera Genel Durum Seçici -->
+            <div id="cameraStatusControl"></div>
+          </div>
+
+          <div class="p-5 space-y-4">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">Yedeklenen Cihaz / Disk</label>
+                <input type="text" id="camDeviceInput" oninput="updateCameraInfo()" placeholder="Örn: Harici Disk 1 / Bulut"
+                  class="w-full text-sm bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-500" />
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">Kayıt Tarih Aralığı</label>
+                <input type="text" id="camRangeInput" oninput="updateCameraInfo()" placeholder="Örn: Son 7 Gün / Bugün"
+                  class="w-full text-sm bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-500" />
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">Aktif Kamera Durumu</label>
+                <input type="text" id="camHealthInput" oninput="updateCameraInfo()" placeholder="Örn: 16/16 Kamera Aktif"
+                  class="w-full text-sm bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-500" />
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">Kamera / Yedekleme Notu</label>
+              <textarea id="camNoteInput" rows="2" oninput="updateCameraInfo()" placeholder="Kamera kayıtları, kör nokta, disk doluluğu veya yedekleme ile ilgili notunuz..."
+                class="w-full text-sm bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-500"></textarea>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. GÜNLÜK GENEL NOTLAR & KONTROL MADDELERİ -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden print-card">
+          <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+            <div class="flex items-center gap-2.5">
+              <div class="bg-indigo-100 text-indigo-600 p-2 rounded-xl">
+                <i data-lucide="clipboard-list" class="w-5 h-5"></i>
+              </div>
+              <div>
+                <h2 class="text-base font-bold text-slate-900">Kurum İçi Notlar & Takip Maddeleri</h2>
+                <p class="text-xs text-slate-500">Veli görüşmeleri, evrak eksikleri, bakım/onarım ve hatırlatmalar</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="p-5 space-y-4">
+            <!-- Yeni Not Ekleme Formu -->
+            <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80 space-y-2.5 no-print">
+              <div class="flex flex-wrap sm:flex-nowrap gap-2">
+                <select id="newNoteCategory" class="text-xs font-semibold bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                  <option value="Genel">📌 Genel Not</option>
+                  <option value="2. Şube">🏢 2. Şube Notu</option>
+                  <option value="Öğrenci/Veli">👨‍👩‍👧 Öğrenci / Veli</option>
+                  <option value="Araç/Servis">🚐 Araç / Servis</option>
+                  <option value="Evrak/MEB">📁 Evrak / Resmi İşlem</option>
+                  <option value="Bakım/Alım">🛠️ Bakım / Malzeme Alımı</option>
+                  <option value="Personel">👔 Personel</option>
+                </select>
+                <input type="text" id="newNoteText" placeholder="Notunuzu veya yapılacak işi yazın..."
+                  class="flex-1 text-sm bg-white border border-slate-200 rounded-xl px-3.5 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  onkeydown="if(event.key==='Enter') addNoteItem()" />
+              </div>
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="flex items-center gap-2">
+                  <span class="text-xs text-slate-500 font-medium">Durum:</span>
+                  <select id="newNoteStatus" class="text-xs font-semibold bg-white border border-slate-200 rounded-lg px-2.5 py-1.5">
+                    <option value="hatirlat">🔔 Hatırlat</option>
+                    <option value="eksik">❌ Eksik</option>
+                    <option value="tamamlandi">✅ Tamamlandı</option>
+                  </select>
+                  <label class="flex items-center gap-1.5 text-xs text-slate-600 ml-2 cursor-pointer">
+                    <input type="checkbox" id="newNotePin" class="rounded text-indigo-600 focus:ring-indigo-500" checked />
+                    <span>Bitene kadar her gün göster (Sabitle)</span>
+                  </label>
+                </div>
+                <button onclick="addNoteItem()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-4 py-2 rounded-xl transition flex items-center gap-1.5">
+                  <i data-lucide="plus-circle" class="w-4 h-4"></i> Not Ekle
+                </button>
+              </div>
+            </div>
+
+            <!-- Notlar Listesi -->
+            <div id="notesListContainer" class="space-y-2.5"></div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- SAĞ SÜTUN (5 Sütun): Maaş Ödeme Tarihleri & Acil Ödemeler -->
+      <div class="lg:col-span-5 space-y-6">
+
+        <!-- 4. ACİL ÖDEMELER VE FATURA / GİDER TAKİBİ -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden print-card">
+          <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-rose-50/40">
+            <div class="flex items-center gap-2.5">
+              <div class="bg-rose-100 text-rose-600 p-2 rounded-xl">
+                <i data-lucide="alert-octagon" class="w-5 h-5"></i>
+              </div>
+              <div>
+                <h2 class="text-base font-bold text-slate-900">Yapılacak Acil Ödemeler</h2>
+                <p class="text-xs text-slate-500">Kira, fatura, vergi, SGK, araç gideri ve acil ödemeler</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="p-5 space-y-4">
+            <!-- Yeni Acil Ödeme Formu -->
+            <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80 space-y-2.5 no-print">
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <input type="text" id="urgentTitleInput" placeholder="Ödeme Başlığı (Örn: Elektrik, SGK)"
+                  class="text-sm bg-white border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-rose-500" />
+                <input type="number" min="0" step="0.01" id="urgentAmountInput" placeholder="Tutar (₺)"
+                  class="text-sm bg-white border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-rose-500" />
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div class="flex items-center gap-1.5">
+                  <span class="text-xs text-slate-500 whitespace-nowrap">Son Gün:</span>
+                  <input type="date" id="urgentDueDateInput"
+                    class="w-full text-xs bg-white border border-slate-200 rounded-xl px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-rose-500" />
+                </div>
+                <select id="urgentStatusInput" class="text-xs font-semibold bg-white border border-slate-200 rounded-xl px-2.5 py-2">
+                  <option value="hatirlat">🔔 Hatırlat (Bekliyor)</option>
+                  <option value="eksik">❌ Eksik / Gecikti</option>
+                  <option value="tamamlandi">✅ Ödendi (Tamamlandı)</option>
+                </select>
+              </div>
+              <div class="flex items-center justify-between gap-2">
+                <input type="text" id="urgentNoteInput" placeholder="Şube / IBAN / Açıklama (İsteğe bağlı)"
+                  class="flex-1 text-xs bg-white border border-slate-200 rounded-xl px-3 py-2 focus:outline-none"
+                  onkeydown="if(event.key==='Enter') addUrgentPayment()" />
+                <button onclick="addUrgentPayment()" class="bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold px-4 py-2 rounded-xl transition flex items-center gap-1 whitespace-nowrap">
+                  <i data-lucide="plus" class="w-4 h-4"></i> Ekle
+                </button>
+              </div>
+            </div>
+
+            <!-- Acil Ödemeler Listesi -->
+            <div id="urgentPaymentsContainer" class="space-y-2.5"></div>
+          </div>
+        </div>
+
+        <!-- 5. PERSONEL MAAŞ ÖDEME TARİHLERİ VE TAKİBİ -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden print-card">
+          <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-emerald-50/40">
+            <div class="flex items-center gap-2.5">
+              <div class="bg-emerald-100 text-emerald-600 p-2 rounded-xl">
+                <i data-lucide="banknote" class="w-5 h-5"></i>
+              </div>
+              <div>
+                <h2 class="text-base font-bold text-slate-900">Maaş Ödeme Tarihleri & Personel</h2>
+                <p class="text-xs text-slate-500">Personel maaş günleri, avans ve ödeme durumları</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="p-5 space-y-4">
+            <!-- Yeni Maaş Kaydı Formu -->
+            <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80 space-y-2.5 no-print">
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <input type="text" id="salaryNameInput" placeholder="Personel Adı / Şubesi"
+                  class="text-sm bg-white border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                <input type="number" min="0" step="0.01" id="salaryAmountInput" placeholder="Maaş Tutarı (₺)"
+                  class="text-sm bg-white border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div class="flex items-center gap-1.5">
+                  <span class="text-xs text-slate-500 whitespace-nowrap">Ödeme Günü:</span>
+                  <input type="date" id="salaryDateInput"
+                    class="w-full text-xs bg-white border border-slate-200 rounded-xl px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                </div>
+                <select id="salaryStatusInput" class="text-xs font-semibold bg-white border border-slate-200 rounded-xl px-2.5 py-2">
+                  <option value="hatirlat">🔔 Hatırlat (Ödenecek)</option>
+                  <option value="eksik">❌ Eksik / Kısmi Ödeme</option>
+                  <option value="tamamlandi">✅ Maaş Ödendi</option>
+                </select>
+              </div>
+              <div class="flex items-center justify-between gap-2">
+                <input type="text" id="salaryNoteInput" placeholder="Avans / Mesai / Ek Not..."
+                  class="flex-1 text-xs bg-white border border-slate-200 rounded-xl px-3 py-2 focus:outline-none"
+                  onkeydown="if(event.key==='Enter') addSalaryItem()" />
+                <button onclick="addSalaryItem()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-4 py-2 rounded-xl transition flex items-center gap-1 whitespace-nowrap">
+                  <i data-lucide="plus" class="w-4 h-4"></i> Personel Ekle
+                </button>
+              </div>
+            </div>
+
+            <!-- Maaş Listesi -->
+            <div id="salaryListContainer" class="space-y-2.5"></div>
+          </div>
+        </div>
+
+        <!-- 6. GEÇMİŞ GÜNLERİN HIZLI ÖZET TABLOSU -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden print-card">
+          <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+            <div class="flex items-center gap-2.5">
+              <div class="bg-slate-200 text-slate-700 p-2 rounded-xl">
+                <i data-lucide="history" class="w-5 h-5"></i>
+              </div>
+              <div>
+                <h2 class="text-base font-bold text-slate-900">Son Kaydedilen Günler Özeti</h2>
+                <p class="text-xs text-slate-500">Merkez & 2. Şube seans, öğrenci ve kontrol geçmişi</p>
+              </div>
+            </div>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr class="bg-slate-50 text-slate-600 border-b border-slate-200">
+                  <th class="py-2.5 px-3 font-semibold">Tarih</th>
+                  <th class="py-2.5 px-2 font-semibold text-center">Merkez Seans</th>
+                  <th class="py-2.5 px-2 font-semibold text-center">2.Şube Seans</th>
+                  <th class="py-2.5 px-2 font-semibold text-center">Temizlik</th>
+                  <th class="py-2.5 px-2 font-semibold text-center">2.Şube Kontrol</th>
+                </tr>
+              </thead>
+              <tbody id="historyTableBody" class="divide-y divide-slate-100"></tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ÜCRETSİZ BULUT SENKRONİZASYON & YEDEKLEME MODALI -->
+  <div id="cloudModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden items-center justify-center p-4 no-print">
+    <div class="bg-white rounded-2xl max-w-2xl w-full shadow-2xl border border-slate-200 overflow-hidden max-h-[90vh] flex flex-col">
+      <div class="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <i data-lucide="cloud-cog" class="w-5 h-5 text-indigo-400"></i>
+          <h3 class="text-base font-bold">Ücretsiz Bulut Senkronizasyonu & Kurum Ayarları</h3>
+        </div>
+        <button onclick="closeCloudModal()" class="text-slate-400 hover:text-white p-1">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="p-6 overflow-y-auto space-y-6 text-sm">
+        <!-- Kurum ve 2. Şube Adı Ayarı -->
+        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+          <div>
+            <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Merkez Kurum Başlığı</label>
+            <input type="text" id="institutionNameInput" placeholder="Merkez Kurum Adınız" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="block text-xs font-bold uppercase text-purple-700 mb-1">2. Şube Başlığı</label>
+            <input type="text" id="branch2NameInput" placeholder="Örn: 2. Şube (Batıkent Şubesi) Günlük Kontrol" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-sm" />
+          </div>
+          <button onclick="saveInstitutionName()" class="bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-xl text-xs font-semibold">Başlıkları Kaydet</button>
+        </div>
+
+        <!-- Seçenek 1: Dosya Yedekleme -->
+        <div class="bg-emerald-50/70 p-4 rounded-xl border border-emerald-200 space-y-3">
+          <div class="flex items-center justify-between">
+            <h4 class="font-bold text-emerald-950 flex items-center gap-2">
+              <i data-lucide="hard-drive-download" class="w-4 h-4 text-emerald-600"></i>
+              1. Bilgisayara Tam Yedek Al / Geri Yükle (Ücretsiz & Anında)
+            </h4>
+          </div>
+          <p class="text-xs text-emerald-800">
+            Tüm verileriniz tarayıcınızda otomatik saklanır. İstediğiniz zaman tek tıkla yedek dosyasını indirip başka bir bilgisayara veya telefona aktarabilirsiniz.
+          </p>
+          <div class="flex flex-wrap gap-2">
+            <button onclick="downloadJsonBackup()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-4 py-2 rounded-xl flex items-center gap-1.5">
+              <i data-lucide="download" class="w-4 h-4"></i> Yedek Dosyası İndir (.json)
+            </button>
+            <label class="bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300 text-xs font-semibold px-4 py-2 rounded-xl flex items-center gap-1.5 cursor-pointer">
+              <i data-lucide="upload" class="w-4 h-4"></i> Yedek Dosyası Yükle
+              <input type="file" accept=".json" onchange="restoreJsonBackup(event)" class="hidden" />
+            </label>
+          </div>
+        </div>
+
+        <!-- Seçenek 2: Ücretsiz Bulut -->
+        <div class="bg-indigo-50/60 p-4 rounded-xl border border-indigo-200 space-y-3">
+          <h4 class="font-bold text-indigo-950 flex items-center gap-2">
+            <i data-lucide="globe" class="w-4 h-4 text-indigo-600"></i>
+            2. Ücretsiz Bulut Veritabanı Bağlantısı (Kredi Kartsız)
+          </h4>
+          <p class="text-xs text-indigo-900 leading-relaxed">
+            Farklı cihazlardan (evdeki bilgisayar, kurumdaki bilgisayar ve telefon) aynı verilere erişmek için tamamen ücretsiz bir bulut adresi girebilirsiniz.
+          </p>
+
+          <div class="space-y-2">
+            <label class="block text-xs font-semibold text-indigo-900">Ücretsiz Bulut Veritabanı URL:</label>
+            <input type="url" id="cloudEndpointInput" placeholder="Örn: https://api.npoint.io/... veya Firebase Realtime DB URL"
+              class="w-full bg-white border border-indigo-200 rounded-xl px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            <label class="block text-xs font-semibold text-indigo-900 mt-2">Gizli Anahtar / API Key (İsteğe Bağlı):</label>
+            <input type="password" id="cloudSecretInput" placeholder="Varsa API Key veya Secret (Boş bırakılabilir)"
+              class="w-full bg-white border border-indigo-200 rounded-xl px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          </div>
+
+          <div class="flex flex-wrap items-center gap-2 pt-2">
+            <button onclick="saveCloudConfig()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-4 py-2 rounded-xl">
+              Bulut Ayarlarını Kaydet
+            </button>
+            <button onclick="pushToCloud(true)" class="bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold px-3.5 py-2 rounded-xl flex items-center gap-1">
+              <i data-lucide="upload-cloud" class="w-3.5 h-3.5"></i> Şimdi Buluta Gönder
+            </button>
+            <button onclick="pullFromCloud(true)" class="bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 text-xs font-semibold px-3.5 py-2 rounded-xl flex items-center gap-1">
+              <i data-lucide="download-cloud" class="w-3.5 h-3.5"></i> Buluttan Çek
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // --- VARSAYILAN VERİ YAPISI ---
+    const STORAGE_KEY = 'KURUM_TAKIP_DATA_V1';
+
+    const DEFAULT_CLEANING_AREAS = [
+      { id: 'wc-ogrenci', name: 'Öğrenci / Koridor WC Temizliği' },
+      { id: 'wc-personel', name: 'Personel & Veli WC Temizliği' },
+      { id: 'bireysel-odalar', name: 'Bireysel Eğitim Odaları (Havalandırma & Yüzey)' },
+      { id: 'grup-odalari', name: 'Grup Eğitim & Oyun Odaları' },
+      { id: 'fizyo-duyu', name: 'Fizyoterapi / Duyu Bütünleme Salonu' },
+      { id: 'bekleme-koridor', name: 'Veli Bekleme Salonu & Koridorlar' },
+      { id: 'idare-mutfak', name: 'İdare Odası & Mutfak / Çay Ocağı' }
+    ];
+
+    const DEFAULT_BRANCH2_QUESTIONS = [
+      {
+        id: 'b2-gorusme',
+        category: 'Görüşme',
+        question: 'Bugün görüşmem gereken kimse (veli, personel, kurum) var mı? Görüşme yapıldı mı?'
+      },
+      {
+        id: 'b2-arac',
+        category: 'Araç/Servis',
+        question: 'Araçlar / servisler ile ilgili herhangi bir sıkıntı, arıza, muayene veya gecikme var mı?'
+      },
+      {
+        id: 'b2-seans',
+        category: 'Seans/Öğrenci',
+        question: 'Günlük seans sayısı ile ilgili sıkıntı, toplu iptal veya devamsızlık var mı?'
+      },
+      {
+        id: 'b2-personel',
+        category: 'Personel',
+        question: '2. Şube personel devam durumu, izin/rapor veya ders saatlerinde aksama var mı?'
+      },
+      {
+        id: 'b2-temizlik-kamera',
+        category: 'Genel Kontrol',
+        question: '2. Şube temizlik (WC/Odalar) ve kamera kayıt kontrolü yapıldı mı?'
+      },
+      {
+        id: 'b2-odeme-evrak',
+        category: 'Genel Kontrol',
+        question: '2. Şubede acil ödeme, fatura veya imza/evrak eksiği var mı?'
+      }
+    ];
+
+    let appState = {
+      institutionName: 'Kurum Kontrol & Takip Sistemi',
+      branch2Name: '2. Şube Günlük Kontrol & Sorulacak Sorular',
+      cloudConfig: {
+        endpoint: '',
+        secret: ''
+      },
+      cleaningTemplate: [...DEFAULT_CLEANING_AREAS],
+      branch2Template: [...DEFAULT_BRANCH2_QUESTIONS],
+      days: {},
+      salaries: [],
+      urgentPayments: [],
+      pinnedNotes: []
+    };
+
+    let currentDate = getTodayStr();
+    let currentFilter = 'all';
+
+    function getTodayStr() {
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = String(now.getMonth() + 1).padStart(2, '0');
+      const d = String(now.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+
+    function createEmptyDay(dateStr) {
+      let lastStudentCount = 0;
+      let lastBranch2StudentCount = 0;
+      const sortedDates = Object.keys(appState.days).sort();
+      for (let i = sortedDates.length - 1; i >= 0; i--) {
+        if (sortedDates[i] < dateStr) {
+          if (!lastStudentCount && appState.days[sortedDates[i]].studentCount > 0) {
+            lastStudentCount = appState.days[sortedDates[i]].studentCount;
+          }
+          if (!lastBranch2StudentCount && appState.days[sortedDates[i]].branch2Students > 0) {
+            lastBranch2StudentCount = appState.days[sortedDates[i]].branch2Students;
+          }
+        }
+      }
+
+      const cleaningMap = {};
+      appState.cleaningTemplate.forEach(area => {
+        cleaningMap[area.id] = { status: 'hatirlat', note: '' };
+      });
+
+      const branch2ChecksMap = {};
+      appState.branch2Template.forEach(q => {
+        branch2ChecksMap[q.id] = { status: 'hatirlat', answer: '' };
+      });
+
+      return {
+        date: dateStr,
+        dailySessions: 0,
+        indSessions: 0,
+        grpSessions: 0,
+        studentCount: lastStudentCount,
+        attendingStudents: 0,
+        makeupStudents: 0,
+        branch2Sessions: 0,
+        branch2Students: lastBranch2StudentCount,
+        cleaning: cleaningMap,
+        branch2Checks: branch2ChecksMap,
+        camera: {
+          status: 'hatirlat',
+          device: '',
+          range: '',
+          health: '',
+          note: ''
+        },
+        dailyNotes: []
+      };
+    }
+
+    function ensureDayExists(dateStr) {
+      if (!appState.days[dateStr]) {
+        appState.days[dateStr] = createEmptyDay(dateStr);
+      } else {
+        const d = appState.days[dateStr];
+        if (!d.cleaning) d.cleaning = {};
+        appState.cleaningTemplate.forEach(area => {
+          if (!d.cleaning[area.id]) {
+            d.cleaning[area.id] = { status: 'hatirlat', note: '' };
+          }
+        });
+
+        if (!d.branch2Checks) d.branch2Checks = {};
+        appState.branch2Template.forEach(q => {
+          if (!d.branch2Checks[q.id]) {
+            d.branch2Checks[q.id] = { status: 'hatirlat', answer: '' };
+          }
+        });
+      }
+      return appState.days[dateStr];
+    }
+
+    // --- KAYIT VE YÜKLEME ---
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          appState = { ...appState, ...parsed };
+          if (!appState.cleaningTemplate || appState.cleaningTemplate.length === 0) {
+            appState.cleaningTemplate = [...DEFAULT_CLEANING_AREAS];
+          }
+          if (!appState.branch2Template || appState.branch2Template.length === 0) {
+            appState.branch2Template = [...DEFAULT_BRANCH2_QUESTIONS];
+          }
+        } else {
+          seedInitialSampleData();
+        }
+      } catch (e) {
+        console.error('Veri okuma hatası:', e);
+      }
+      ensureDayExists(currentDate);
+    }
+
+    function seedInitialSampleData() {
+      const today = getTodayStr();
+      appState.days[today] = createEmptyDay(today);
+      appState.urgentPayments = [
+        {
+          id: 'urg-1',
+          title: 'Kurum Kira / Faturalar Kontrolü',
+          amount: 0,
+          dueDate: today,
+          status: 'hatirlat',
+          note: 'Fatura son ödeme tarihlerini kontrol et'
+        }
+      ];
+      appState.salaries = [
+        {
+          id: 'sal-1',
+          name: 'Örnek: Eğitim Personeli Maaş Ödemesi',
+          amount: 0,
+          dueDate: today,
+          status: 'hatirlat',
+          note: 'Maaş günü kontrolü'
+        }
+      ];
+      saveState(false);
+    }
+
+    let cloudSyncTimer = null;
+    function saveState(triggerCloud = true) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
+        updateSyncIndicator('saved');
+        if (triggerCloud && appState.cloudConfig && appState.cloudConfig.endpoint) {
+          clearTimeout(cloudSyncTimer);
+          cloudSyncTimer = setTimeout(() => pushToCloud(false), 1500);
+        }
+      } catch (e) {
+        console.error('Kayıt hatası:', e);
+      }
+    }
+
+    function updateSyncIndicator(state, message) {
+      const dot = document.getElementById('syncIndicator');
+      const text = document.getElementById('syncStatusText');
+      if (!dot || !text) return;
+
+      if (state === 'syncing') {
+        dot.className = 'w-2 h-2 rounded-full bg-amber-400 animate-ping inline-block';
+        text.textContent = message || 'Bulut ile eşitleniyor...';
+      } else if (state === 'cloud-ok') {
+        dot.className = 'w-2 h-2 rounded-full bg-emerald-400 inline-block';
+        text.textContent = message || 'Yerel + Bulut Senkronize';
+      } else if (state === 'error') {
+        dot.className = 'w-2 h-2 rounded-full bg-red-400 inline-block';
+        text.textContent = message || 'Yerel Kayıt Aktif (Bulut Bağlantı Hatası)';
+      } else {
+        dot.className = 'w-2 h-2 rounded-full bg-emerald-400 inline-block';
+        text.textContent = appState.cloudConfig?.endpoint
+          ? 'Otomatik Kaydedildi (Bulut Aktif)'
+          : 'Yerel Kayıt Aktif (Otomatik Kaydediliyor)';
+      }
+    }
+
+    // --- TARİH İŞLEMLERİ ---
+    function onDateChange(val) {
+      if (!val) return;
+      currentDate = val;
+      const monthInput = document.getElementById('analyticsMonthInput');
+      if (monthInput) monthInput.value = currentDate.slice(0, 7);
+      ensureDayExists(currentDate);
+      renderAll();
+    }
+
+    function changeDate(offsetDays) {
+      const parts = currentDate.split('-').map(Number);
+      const dt = new Date(parts[0], parts[1] - 1, parts[2]);
+      dt.setDate(dt.getDate() + offsetDays);
+      const y = dt.getFullYear();
+      const m = String(dt.getMonth() + 1).padStart(2, '0');
+      const d = String(dt.getDate()).padStart(2, '0');
+      currentDate = `${y}-${m}-${d}`;
+      const monthInput = document.getElementById('analyticsMonthInput');
+      if (monthInput) monthInput.value = currentDate.slice(0, 7);
+      ensureDayExists(currentDate);
+      renderAll();
+    }
+
+    function goToToday() {
+      currentDate = getTodayStr();
+      const monthInput = document.getElementById('analyticsMonthInput');
+      if (monthInput) monthInput.value = currentDate.slice(0, 7);
+      ensureDayExists(currentDate);
+      renderAll();
+    }
+
+    function formatDisplayDate(dateStr) {
+      if (!dateStr) return '-';
+      const parts = dateStr.split('-');
+      if (parts.length !== 3) return dateStr;
+      return `${parts[2]}.${parts[1]}.${parts[0]}`;
+    }
+
+    function formatMonthName(yyyyMm) {
+      if (!yyyyMm) return '';
+      const [y, m] = yyyyMm.split('-').map(Number);
+      const months = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+      return `${months[(m || 1) - 1]} ${y}`;
+    }
+
+    // --- FİLTRELEME ---
+    function setFilterStatus(status) {
+      currentFilter = status;
+      ['all', 'tamamlandi', 'eksik', 'hatirlat'].forEach(st => {
+        const btn = document.getElementById(`filterBtn-${st}`);
+        if (!btn) return;
+        if (st === status) {
+          btn.className = 'text-xs font-bold px-3.5 py-1.5 rounded-xl bg-slate-900 text-white shadow-sm transition flex items-center gap-1';
+        } else {
+          if (st === 'all') btn.className = 'text-xs font-semibold px-3 py-1.5 rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200 transition';
+          if (st === 'tamamlandi') btn.className = 'text-xs font-semibold px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition flex items-center gap-1';
+          if (st === 'eksik') btn.className = 'text-xs font-semibold px-3 py-1.5 rounded-xl bg-red-50 text-red-700 hover:bg-red-100 transition flex items-center gap-1';
+          if (st === 'hatirlat') btn.className = 'text-xs font-semibold px-3 py-1.5 rounded-xl bg-amber-50 text-amber-800 hover:bg-amber-100 transition flex items-center gap-1';
+        }
+      });
+      renderAll();
+    }
+
+    function matchesFilter(status) {
+      if (currentFilter === 'all') return true;
+      return status === currentFilter;
+    }
+
+    function renderStatusButtons(currentStatus, onChangeJsExpr) {
+      const buttons = [
+        { key: 'tamamlandi', label: 'Tamamlandı', activeCls: 'bg-emerald-600 text-white border-emerald-600 shadow-sm', inactiveCls: 'bg-white text-slate-600 border-slate-200 hover:bg-emerald-50 hover:text-emerald-700' },
+        { key: 'eksik', label: 'Eksik / Sıkıntı', activeCls: 'bg-red-600 text-white border-red-600 shadow-sm', inactiveCls: 'bg-white text-slate-600 border-slate-200 hover:bg-red-50 hover:text-red-700' },
+        { key: 'hatirlat', label: 'Hatırlat', activeCls: 'bg-amber-500 text-white border-amber-500 shadow-sm', inactiveCls: 'bg-white text-slate-600 border-slate-200 hover:bg-amber-50 hover:text-amber-700' }
+      ];
+
+      return `<div class="inline-flex rounded-xl p-0.5 bg-slate-100 border border-slate-200 gap-1 no-print">
+        ${buttons.map(b => {
+          const isActive = currentStatus === b.key;
+          return `<button type="button" onclick="${onChangeJsExpr.replace('__STATUS__', b.key)}"
+            class="text-[11px] font-semibold px-2.5 py-1 rounded-lg border transition ${isActive ? b.activeCls : b.inactiveCls}">
+            ${b.label}
+          </button>`;
+        }).join('')}
+      </div>
+      <span class="hidden print:inline-block text-xs font-bold px-2 py-0.5 rounded border status-${currentStatus}">
+        ${currentStatus === 'tamamlandi' ? 'TAMAMLANDI' : currentStatus === 'eksik' ? 'EKSİK / SIKINTI' : 'HATIRLAT'}
+      </span>`;
+    }
+
+    // --- GÜNLÜK METRİKLER (Merkez & 2. Şube Seans / Öğrenci) ---
+    function updateDailyMetrics() {
+      const day = ensureDayExists(currentDate);
+      day.dailySessions = parseInt(document.getElementById('dailySessionsInput').value, 10) || 0;
+      day.studentCount = parseInt(document.getElementById('studentCountInput').value, 10) || 0;
+      day.attendingStudents = parseInt(document.getElementById('attendingStudentsInput').value, 10) || 0;
+      day.makeupStudents = parseInt(document.getElementById('makeupStudentsInput').value, 10) || 0;
+      saveState();
+      renderSummaryCards();
+      renderMonthlyAnalytics();
+      renderHistoryTable();
+    }
+
+    function updateSubSessions() {
+      const day = ensureDayExists(currentDate);
+      day.indSessions = parseInt(document.getElementById('indSessionsInput').value, 10) || 0;
+      day.grpSessions = parseInt(document.getElementById('grpSessionsInput').value, 10) || 0;
+      day.dailySessions = day.indSessions + day.grpSessions;
+      document.getElementById('dailySessionsInput').value = day.dailySessions;
+      saveState();
+      renderSummaryCards();
+      renderMonthlyAnalytics();
+      renderHistoryTable();
+    }
+
+    function updateBranch2Metrics() {
+      const day = ensureDayExists(currentDate);
+      day.branch2Sessions = parseInt(document.getElementById('branch2SessionsInput').value, 10) || 0;
+      day.branch2Students = parseInt(document.getElementById('branch2StudentsInput').value, 10) || 0;
+      saveState();
+      renderSummaryCards();
+      renderMonthlyAnalytics();
+      renderHistoryTable();
+    }
+
+    // --- 2. ŞUBE SORULACAK SORULAR & KONTROLLER ---
+    function setBranch2CheckStatus(qId, status) {
+      const day = ensureDayExists(currentDate);
+      if (!day.branch2Checks[qId]) day.branch2Checks[qId] = { status: 'hatirlat', answer: '' };
+      day.branch2Checks[qId].status = status;
+      saveState();
+      renderAll();
+    }
+
+    function updateBranch2Answer(qId, val) {
+      const day = ensureDayExists(currentDate);
+      if (!day.branch2Checks[qId]) day.branch2Checks[qId] = { status: 'hatirlat', answer: '' };
+      day.branch2Checks[qId].answer = val;
+      saveState();
+    }
+
+    function markAllBranch2(status) {
+      const day = ensureDayExists(currentDate);
+      appState.branch2Template.forEach(q => {
+        if (!day.branch2Checks[q.id]) day.branch2Checks[q.id] = { status, answer: '' };
+        day.branch2Checks[q.id].status = status;
+      });
+      saveState();
+      renderAll();
+    }
+
+    function addBranch2Question() {
+      const catEl = document.getElementById('newBranch2Category');
+      const inputEl = document.getElementById('newBranch2QuestionInput');
+      const question = (inputEl.value || '').trim();
+      if (!question) return;
+
+      const id = 'b2-' + Date.now();
+      appState.branch2Template.push({
+        id,
+        category: catEl.value || 'Genel Kontrol',
+        question
+      });
+      ensureDayExists(currentDate);
+      inputEl.value = '';
+      saveState();
+      renderAll();
+    }
+
+    function deleteBranch2Question(qId) {
+      if (!confirm('Bu soruyu 2. Şube kontrol listesinden kaldırmak istediğinize emin misiniz?')) return;
+      appState.branch2Template = appState.branch2Template.filter(q => q.id !== qId);
+      saveState();
+      renderAll();
+    }
+
+    // --- TEMİZLİK İŞLEMLERİ ---
+    function setCleaningStatus(areaId, status) {
+      const day = ensureDayExists(currentDate);
+      if (!day.cleaning[areaId]) day.cleaning[areaId] = { status: 'hatirlat', note: '' };
+      day.cleaning[areaId].status = status;
+      saveState();
+      renderAll();
+    }
+
+    function updateCleaningNote(areaId, val) {
+      const day = ensureDayExists(currentDate);
+      if (!day.cleaning[areaId]) day.cleaning[areaId] = { status: 'hatirlat', note: '' };
+      day.cleaning[areaId].note = val;
+      saveState();
+    }
+
+    function markAllCleaning(status) {
+      const day = ensureDayExists(currentDate);
+      appState.cleaningTemplate.forEach(area => {
+        if (!day.cleaning[area.id]) day.cleaning[area.id] = { status, note: '' };
+        day.cleaning[area.id].status = status;
+      });
+      saveState();
+      renderAll();
+    }
+
+    function addCleaningArea() {
+      const input = document.getElementById('newCleaningAreaInput');
+      const name = (input.value || '').trim();
+      if (!name) return;
+      const id = 'area-' + Date.now();
+      appState.cleaningTemplate.push({ id, name });
+      ensureDayExists(currentDate);
+      input.value = '';
+      saveState();
+      renderAll();
+    }
+
+    function deleteCleaningArea(areaId) {
+      if (!confirm('Bu temizlik alanını listeden kaldırmak istediğinize emin misiniz?')) return;
+      appState.cleaningTemplate = appState.cleaningTemplate.filter(a => a.id !== areaId);
+      saveState();
+      renderAll();
+    }
+
+    // --- KAMERA İŞLEMLERİ ---
+    function setCameraStatus(status) {
+      const day = ensureDayExists(currentDate);
+      day.camera.status = status;
+      saveState();
+      renderAll();
+    }
+
+    function updateCameraInfo() {
+      const day = ensureDayExists(currentDate);
+      day.camera.device = document.getElementById('camDeviceInput').value;
+      day.camera.range = document.getElementById('camRangeInput').value;
+      day.camera.health = document.getElementById('camHealthInput').value;
+      day.camera.note = document.getElementById('camNoteInput').value;
+      saveState();
+      renderSummaryCards();
+      renderHistoryTable();
+    }
+
+    // --- GENEL NOTLAR & GÖREVLER ---
+    function addNoteItem() {
+      const textInput = document.getElementById('newNoteText');
+      const catInput = document.getElementById('newNoteCategory');
+      const statusInput = document.getElementById('newNoteStatus');
+      const pinInput = document.getElementById('newNotePin');
+
+      const text = (textInput.value || '').trim();
+      if (!text) return;
+
+      const newItem = {
+        id: 'note-' + Date.now(),
+        category: catInput.value,
+        text,
+        status: statusInput.value,
+        createdAt: currentDate,
+        pinned: pinInput.checked
+      };
+
+      if (newItem.pinned) {
+        appState.pinnedNotes.unshift(newItem);
+      } else {
+        const day = ensureDayExists(currentDate);
+        day.dailyNotes.unshift(newItem);
+      }
+
+      textInput.value = '';
+      saveState();
+      renderAll();
+    }
+
+    function setNoteStatus(noteId, isPinned, status) {
+      if (isPinned) {
+        const item = appState.pinnedNotes.find(n => n.id === noteId);
+        if (item) item.status = status;
+      } else {
+        const day = ensureDayExists(currentDate);
+        const item = day.dailyNotes.find(n => n.id === noteId);
+        if (item) item.status = status;
+      }
+      saveState();
+      renderAll();
+    }
+
+    function deleteNoteItem(noteId, isPinned) {
+      if (isPinned) {
+        appState.pinnedNotes = appState.pinnedNotes.filter(n => n.id !== noteId);
+      } else {
+        const day = ensureDayExists(currentDate);
+        day.dailyNotes = day.dailyNotes.filter(n => n.id !== noteId);
+      }
+      saveState();
+      renderAll();
+    }
+
+    // --- ACİL ÖDEMELER ---
+    function addUrgentPayment() {
+      const titleEl = document.getElementById('urgentTitleInput');
+      const amountEl = document.getElementById('urgentAmountInput');
+      const dueEl = document.getElementById('urgentDueDateInput');
+      const statusEl = document.getElementById('urgentStatusInput');
+      const noteEl = document.getElementById('urgentNoteInput');
+
+      const title = (titleEl.value || '').trim();
+      if (!title) return;
+
+      appState.urgentPayments.unshift({
+        id: 'urg-' + Date.now(),
+        title,
+        amount: parseFloat(amountEl.value) || 0,
+        dueDate: dueEl.value || currentDate,
+        status: statusEl.value,
+        note: (noteEl.value || '').trim()
+      });
+
+      titleEl.value = '';
+      amountEl.value = '';
+      noteEl.value = '';
+      saveState();
+      renderAll();
+    }
+
+    function setUrgentStatus(id, status) {
+      const item = appState.urgentPayments.find(u => u.id === id);
+      if (item) item.status = status;
+      saveState();
+      renderAll();
+    }
+
+    function deleteUrgentPayment(id) {
+      appState.urgentPayments = appState.urgentPayments.filter(u => u.id !== id);
+      saveState();
+      renderAll();
+    }
+
+    // --- MAAŞ ÖDEMELERİ ---
+    function addSalaryItem() {
+      const nameEl = document.getElementById('salaryNameInput');
+      const amountEl = document.getElementById('salaryAmountInput');
+      const dateEl = document.getElementById('salaryDateInput');
+      const statusEl = document.getElementById('salaryStatusInput');
+      const noteEl = document.getElementById('salaryNoteInput');
+
+      const name = (nameEl.value || '').trim();
+      if (!name) return;
+
+      appState.salaries.unshift({
+        id: 'sal-' + Date.now(),
+        name,
+        amount: parseFloat(amountEl.value) || 0,
+        dueDate: dateEl.value || currentDate,
+        status: statusEl.value,
+        note: (noteEl.value || '').trim()
+      });
+
+      nameEl.value = '';
+      amountEl.value = '';
+      noteEl.value = '';
+      saveState();
+      renderAll();
+    }
+
+    function setSalaryStatus(id, status) {
+      const item = appState.salaries.find(s => s.id === id);
+      if (item) item.status = status;
+      saveState();
+      renderAll();
+    }
+
+    function deleteSalaryItem(id) {
+      appState.salaries = appState.salaries.filter(s => s.id !== id);
+      saveState();
+      renderAll();
+    }
+
+    // --- DÜNKÜ VERİLERİ AKTARMA ---
+    function copyFromPreviousDay() {
+      const parts = currentDate.split('-').map(Number);
+      const dt = new Date(parts[0], parts[1] - 1, parts[2]);
+      dt.setDate(dt.getDate() - 1);
+      const prevStr = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+
+      const prevDay = appState.days[prevStr];
+      if (!prevDay) {
+        alert(`${formatDisplayDate(prevStr)} tarihine ait kayıt bulunamadı.`);
+        return;
+      }
+
+      const day = ensureDayExists(currentDate);
+      if (prevDay.studentCount) day.studentCount = prevDay.studentCount;
+      if (prevDay.branch2Students) day.branch2Students = prevDay.branch2Students;
+      if (prevDay.camera?.device) day.camera.device = prevDay.camera.device;
+      if (prevDay.camera?.health) day.camera.health = prevDay.camera.health;
+
+      const unfinishedNotes = (prevDay.dailyNotes || []).filter(n => n.status !== 'tamamlandi');
+      unfinishedNotes.forEach(n => {
+        if (!day.dailyNotes.some(existing => existing.text === n.text)) {
+          day.dailyNotes.push({ ...n, id: 'note-' + Date.now() + Math.random() });
+        }
+      });
+
+      saveState();
+      renderAll();
+    }
+
+    // --- ARAYÜZ ÇİZİMİ (RENDER) ---
+    function renderAll() {
+      const day = ensureDayExists(currentDate);
+
+      document.getElementById('institutionNameDisplay').textContent = appState.institutionName || 'Kurum Kontrol & Takip Sistemi';
+      document.getElementById('branch2TitleDisplay').textContent = appState.branch2Name || '2. Şube Günlük Kontrol & Sorulacak Sorular';
+      document.getElementById('selectedDateInput').value = currentDate;
+      document.getElementById('printDateLabel').textContent = formatDisplayDate(currentDate);
+
+      const monthInput = document.getElementById('analyticsMonthInput');
+      if (monthInput && !monthInput.value) {
+        monthInput.value = currentDate.slice(0, 7);
+      }
+
+      if (!document.getElementById('urgentDueDateInput').value) {
+        document.getElementById('urgentDueDateInput').value = currentDate;
+      }
+      if (!document.getElementById('salaryDateInput').value) {
+        document.getElementById('salaryDateInput').value = currentDate;
+      }
+
+      // Günlük Sayılar (Merkez + 2. Şube)
+      document.getElementById('dailySessionsInput').value = day.dailySessions || 0;
+      document.getElementById('indSessionsInput').value = day.indSessions || 0;
+      document.getElementById('grpSessionsInput').value = day.grpSessions || 0;
+      document.getElementById('studentCountInput').value = day.studentCount || 0;
+      document.getElementById('attendingStudentsInput').value = day.attendingStudents || 0;
+      document.getElementById('makeupStudentsInput').value = day.makeupStudents || 0;
+
+      document.getElementById('branch2SessionsInput').value = day.branch2Sessions || 0;
+      document.getElementById('branch2StudentsInput').value = day.branch2Students || 0;
+      document.getElementById('branch2StudentSummary').textContent = day.branch2Students || 0;
+
+      // Kamera alanları
+      document.getElementById('camDeviceInput').value = day.camera?.device || '';
+      document.getElementById('camRangeInput').value = day.camera?.range || '';
+      document.getElementById('camHealthInput').value = day.camera?.health || '';
+      document.getElementById('camNoteInput').value = day.camera?.note || '';
+      document.getElementById('cameraStatusControl').innerHTML = renderStatusButtons(
+        day.camera?.status || 'hatirlat',
+        `setCameraStatus('__STATUS__')`
+      );
+
+      renderBranch2Questions(day);
+      renderCleaningList(day);
+      renderNotesList(day);
+      renderUrgentPayments();
+      renderSalaries();
+      renderSummaryCards();
+      renderMonthlyAnalytics();
+      renderHistoryTable();
+
+      lucide.createIcons();
+    }
+
+    function renderBranch2Questions(day) {
+      const container = document.getElementById('branch2QuestionsContainer');
+      let doneCount = 0;
+      const totalCount = appState.branch2Template.length;
+
+      const html = appState.branch2Template.map(q => {
+        const entry = (day.branch2Checks && day.branch2Checks[q.id]) || { status: 'hatirlat', answer: '' };
+        if (entry.status === 'tamamlandi') doneCount++;
+        if (!matchesFilter(entry.status)) return '';
+
+        const borderCls = entry.status === 'tamamlandi'
+          ? 'border-emerald-200 bg-emerald-50/30'
+          : entry.status === 'eksik'
+          ? 'border-red-300 bg-red-50/50'
+          : 'border-purple-200 bg-purple-50/30';
+
+        return `<div class="p-3.5 rounded-xl border ${borderCls} flex flex-col justify-between gap-2.5 transition">
+          <div class="space-y-1.5">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-[11px] font-bold uppercase px-2 py-0.5 rounded bg-white border border-purple-200 text-purple-800">${escapeHtml(q.category || '2. Şube')}</span>
+              <div class="flex items-center gap-1.5">
+                ${renderStatusButtons(entry.status, `setBranch2CheckStatus('${q.id}', '__STATUS__')`)}
+                <button onclick="deleteBranch2Question('${q.id}')" class="text-slate-400 hover:text-red-600 p-1 no-print" title="Soruyu Kaldır">
+                  <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                </button>
+              </div>
+            </div>
+            <p class="text-sm font-semibold text-slate-900">${escapeHtml(q.question)}</p>
+          </div>
+          <div>
+            <input type="text" value="${escapeHtml(entry.answer || '')}"
+              oninput="updateBranch2Answer('${q.id}', this.value)"
+              placeholder="Cevap / Görüşme sonucu / Araç veya seans notu yazın..."
+              class="w-full text-xs bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-purple-500" />
+          </div>
+        </div>`;
+      }).filter(Boolean).join('');
+
+      document.getElementById('branch2ProgressBadge').textContent = `${doneCount} / ${totalCount} Kontrol Edildi`;
+      container.innerHTML = html || `<div class="col-span-2 text-center py-4 text-xs text-slate-400">Seçili filtrede 2. şube maddesi bulunmuyor.</div>`;
+    }
+
+    function renderMonthlyAnalytics() {
+      const monthInput = document.getElementById('analyticsMonthInput');
+      const selectedMonth = (monthInput && monthInput.value) ? monthInput.value : currentDate.slice(0, 7);
+      document.getElementById('selectedMonthBadge').textContent = formatMonthName(selectedMonth);
+
+      const [yearNum, monthNum] = selectedMonth.split('-').map(Number);
+      const daysInMonth = new Date(yearNum, monthNum, 0).getDate();
+
+      let mainTotal = 0;
+      let mainIndTotal = 0;
+      let mainGrpTotal = 0;
+      let mainActiveDays = 0;
+      let maxSession = 0;
+      let minSession = null;
+      let maxSessionDate = '';
+
+      let b2Total = 0;
+      let b2ActiveDays = 0;
+      let combinedActiveDays = 0;
+
+      const dayRecords = [];
+
+      for (let d = 1; d <= daysInMonth; d++) {
+        const dStr = `${selectedMonth}-${String(d).padStart(2, '0')}`;
+        const rec = appState.days[dStr];
+        const mSes = Number(rec?.dailySessions || 0);
+        const b2Ses = Number(rec?.branch2Sessions || 0);
+
+        if (mSes > 0) {
+          mainTotal += mSes;
+          mainIndTotal += Number(rec?.indSessions || 0);
+          mainGrpTotal += Number(rec?.grpSessions || 0);
+          mainActiveDays++;
+          if (mSes > maxSession) {
+            maxSession = mSes;
+            maxSessionDate = `${d}.${String(monthNum).padStart(2, '0')}`;
+          }
+          if (minSession === null || mSes < minSession) {
+            minSession = mSes;
+          }
+        }
+
+        if (b2Ses > 0) {
+          b2Total += b2Ses;
+          b2ActiveDays++;
+        }
+
+        if (mSes > 0 || b2Ses > 0) {
+          combinedActiveDays++;
+        }
+
+        dayRecords.push({ dayNum: d, dateStr: dStr, mainSessions: mSes, b2Sessions: b2Ses });
+      }
+
+      const mainAvg = mainActiveDays > 0 ? (mainTotal / mainActiveDays).toFixed(1) : '0';
+      const b2Avg = b2ActiveDays > 0 ? (b2Total / b2ActiveDays).toFixed(1) : '0';
+      const combinedTotal = mainTotal + b2Total;
+      const combinedAvg = combinedActiveDays > 0 ? (combinedTotal / combinedActiveDays).toFixed(1) : '0';
+
+      document.getElementById('mStatMainTotal').textContent = mainTotal;
+      document.getElementById('mStatMainSub').textContent = `Bireysel: ${mainIndTotal} | Grup: ${mainGrpTotal}`;
+      document.getElementById('mStatMainAvg').textContent = mainAvg;
+      document.getElementById('mStatActiveDays').textContent = `${mainActiveDays} seans girilen gün`;
+      document.getElementById('mStatMinMax').textContent = `${maxSession} / ${minSession !== null ? minSession : 0}`;
+      document.getElementById('mStatMaxDate').textContent = maxSessionDate ? `En yoğun: ${maxSessionDate}` : 'Henüz veri yok';
+
+      document.getElementById('mStatBranch2Total').textContent = b2Total;
+      document.getElementById('mStatBranch2Days').textContent = `${b2ActiveDays} seans girilen gün`;
+      document.getElementById('mStatBranch2Avg').textContent = b2Avg;
+
+      document.getElementById('mStatCombinedTotal').textContent = combinedTotal;
+      document.getElementById('mStatCombinedAvg').textContent = `Genel Ort: ${combinedAvg} / gün`;
+
+      // Üst karttaki hızlı aylık özetleri de seçili güne ait ayla güncelle
+      if (selectedMonth === currentDate.slice(0, 7)) {
+        document.getElementById('monthlySessionsTotal').textContent = mainTotal;
+        document.getElementById('monthlySessionsAvg').textContent = mainAvg;
+        document.getElementById('monthlyActiveDaysLabel').textContent = `(${mainActiveDays} gün)`;
+      }
+
+      // Günlük Çubuk Grafiği Çizimi
+      const maxCombined = Math.max(...dayRecords.map(r => r.mainSessions + r.b2Sessions), 10);
+      const barsContainer = document.getElementById('monthlyDailyBarsContainer');
+
+      barsContainer.innerHTML = dayRecords.map(r => {
+        const total = r.mainSessions + r.b2Sessions;
+        const mainHeight = Math.round((r.mainSessions / maxCombined) * 65);
+        const b2Height = Math.round((r.b2Sessions / maxCombined) * 65);
+        const isSelected = r.dateStr === currentDate;
+
+        return `<div onclick="onDateChange('${r.dateStr}')"
+          class="flex flex-col items-center cursor-pointer group min-w-[26px] px-0.5 py-1 rounded-lg transition ${isSelected ? 'bg-indigo-100/80 ring-1 ring-indigo-400' : 'hover:bg-slate-200/60'}"
+          title="${formatDisplayDate(r.dateStr)} — Merkez: ${r.mainSessions}, 2.Şube: ${r.b2Sessions} (Toplam: ${total})">
+          <span class="text-[10px] font-bold ${total > 0 ? 'text-slate-700' : 'text-slate-300'} mb-1">${total > 0 ? total : ''}</span>
+          <div class="w-4 bg-slate-200/70 rounded-t flex flex-col justify-end overflow-hidden" style="height: 68px;">
+            ${r.b2Sessions > 0 ? `<div class="w-full bg-purple-500 transition-all" style="height: ${Math.max(b2Height, 4)}px;"></div>` : ''}
+            ${r.mainSessions > 0 ? `<div class="w-full bg-indigo-600 transition-all" style="height: ${Math.max(mainHeight, 4)}px;"></div>` : ''}
+          </div>
+          <span class="text-[10px] mt-1 font-medium ${isSelected ? 'text-indigo-700 font-bold' : 'text-slate-500'}">${String(r.dayNum).padStart(2, '0')}</span>
+        </div>`;
+      }).join('');
+    }
+
+    function toggleMonthlyModal() {
+      const el = document.getElementById('analyticsMonthInput');
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    function renderCleaningList(day) {
+      const container = document.getElementById('cleaningListContainer');
+      const itemsHtml = appState.cleaningTemplate.map(area => {
+        const entry = day.cleaning[area.id] || { status: 'hatirlat', note: '' };
+        if (!matchesFilter(entry.status)) return '';
+
+        const rowBorder = entry.status === 'tamamlandi'
+          ? 'border-emerald-200 bg-emerald-50/30'
+          : entry.status === 'eksik'
+          ? 'border-red-300 bg-red-50/40'
+          : 'border-amber-200 bg-amber-50/30';
+
+        return `<div class="p-3 rounded-xl border ${rowBorder} transition flex flex-col gap-2">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <span class="font-semibold text-sm text-slate-800">${escapeHtml(area.name)}</span>
+            </div>
+            <div class="flex items-center gap-2">
+              ${renderStatusButtons(entry.status, `setCleaningStatus('${area.id}', '__STATUS__')`)}
+              <button onclick="deleteCleaningArea('${area.id}')" class="text-slate-400 hover:text-red-600 p-1 no-print" title="Alanı Sil">
+                <i data-lucide="trash-2" class="w-4 h-4"></i>
+              </button>
+            </div>
+          </div>
+          <div>
+            <input type="text" value="${escapeHtml(entry.note || '')}"
+              oninput="updateCleaningNote('${area.id}', this.value)"
+              placeholder="Bu alanla ilgili temizlik notu veya eksik malzeme (sabun, peçete vb.)..."
+              class="w-full text-xs bg-white/90 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-sky-500" />
+          </div>
+        </div>`;
+      }).filter(Boolean).join('');
+
+      container.innerHTML = itemsHtml || `<div class="text-center py-6 text-xs text-slate-400">Seçili filtreye uygun temizlik maddesi bulunmuyor.</div>`;
+    }
+
+    function renderNotesList(day) {
+      const container = document.getElementById('notesListContainer');
+      const combined = [
+        ...(appState.pinnedNotes || []).map(n => ({ ...n, isPinned: true })),
+        ...(day.dailyNotes || []).map(n => ({ ...n, isPinned: false }))
+      ].filter(n => matchesFilter(n.status));
+
+      if (combined.length === 0) {
+        container.innerHTML = `<div class="text-center py-6 text-xs text-slate-400">Henüz not eklenmemiş veya seçili filtrede not yok.</div>`;
+        return;
+      }
+
+      container.innerHTML = combined.map(n => {
+        const badgeColor = n.status === 'tamamlandi'
+          ? 'border-emerald-200 bg-emerald-50/30'
+          : n.status === 'eksik'
+          ? 'border-red-300 bg-red-50/40'
+          : 'border-amber-200 bg-amber-50/30';
+
+        return `<div class="p-3.5 rounded-xl border ${badgeColor} flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div class="space-y-1">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="text-[11px] font-bold uppercase px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-700">${escapeHtml(n.category || 'Genel')}</span>
+              ${n.isPinned ? `<span class="text-[11px] font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded">📌 Sabit Takip</span>` : ''}
+              <span class="text-[11px] text-slate-400">${formatDisplayDate(n.createdAt)}</span>
+            </div>
+            <p class="text-sm font-medium text-slate-900 ${n.status === 'tamamlandi' ? 'line-through text-slate-500' : ''}">${escapeHtml(n.text)}</p>
+          </div>
+          <div class="flex items-center gap-2 self-end sm:self-center">
+            ${renderStatusButtons(n.status, `setNoteStatus('${n.id}', ${n.isPinned}, '__STATUS__')`)}
+            <button onclick="deleteNoteItem('${n.id}', ${n.isPinned})" class="text-slate-400 hover:text-red-600 p-1 no-print" title="Notu Sil">
+              <i data-lucide="trash-2" class="w-4 h-4"></i>
+            </button>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    function renderUrgentPayments() {
+      const container = document.getElementById('urgentPaymentsContainer');
+      const filtered = (appState.urgentPayments || []).filter(u => matchesFilter(u.status));
+
+      if (filtered.length === 0) {
+        container.innerHTML = `<div class="text-center py-6 text-xs text-slate-400">Kayıtlı acil ödeme bulunmuyor.</div>`;
+        return;
+      }
+
+      container.innerHTML = filtered.map(u => {
+        const isOverdue = u.status !== 'tamamlandi' && u.dueDate && u.dueDate <= currentDate;
+        const cardCls = u.status === 'tamamlandi'
+          ? 'border-emerald-200 bg-emerald-50/30'
+          : u.status === 'eksik' || isOverdue
+          ? 'border-red-300 bg-red-50/40'
+          : 'border-amber-200 bg-amber-50/30';
+
+        return `<div class="p-3.5 rounded-xl border ${cardCls} space-y-2">
+          <div class="flex items-start justify-between gap-2">
+            <div>
+              <div class="flex items-center gap-2 flex-wrap">
+                <h4 class="text-sm font-bold text-slate-900 ${u.status === 'tamamlandi' ? 'line-through text-slate-500' : ''}">${escapeHtml(u.title)}</h4>
+                ${u.amount > 0 ? `<span class="text-xs font-bold text-rose-700 bg-rose-100 px-2 py-0.5 rounded-lg">${formatCurrency(u.amount)}</span>` : ''}
+              </div>
+              <div class="flex items-center gap-3 text-xs text-slate-500 mt-1">
+                <span>Son Ödeme: <strong class="${isOverdue ? 'text-red-600' : 'text-slate-700'}">${formatDisplayDate(u.dueDate)}</strong></span>
+                ${u.note ? `<span>• ${escapeHtml(u.note)}</span>` : ''}
+              </div>
+            </div>
+            <button onclick="deleteUrgentPayment('${u.id}')" class="text-slate-400 hover:text-red-600 p-1 no-print">
+              <i data-lucide="trash-2" class="w-4 h-4"></i>
+            </button>
+          </div>
+          <div class="flex justify-end pt-1">
+            ${renderStatusButtons(u.status, `setUrgentStatus('${u.id}', '__STATUS__')`)}
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    function renderSalaries() {
+      const container = document.getElementById('salaryListContainer');
+      const filtered = (appState.salaries || []).filter(s => matchesFilter(s.status));
+
+      if (filtered.length === 0) {
+        container.innerHTML = `<div class="text-center py-6 text-xs text-slate-400">Kayıtlı personel maaş takibi bulunmuyor.</div>`;
+        return;
+      }
+
+      container.innerHTML = filtered.map(s => {
+        const isDue = s.status !== 'tamamlandi' && s.dueDate && s.dueDate <= currentDate;
+        const cardCls = s.status === 'tamamlandi'
+          ? 'border-emerald-200 bg-emerald-50/30'
+          : s.status === 'eksik' || isDue
+          ? 'border-red-300 bg-red-50/40'
+          : 'border-amber-200 bg-amber-50/30';
+
+        return `<div class="p-3.5 rounded-xl border ${cardCls} space-y-2">
+          <div class="flex items-start justify-between gap-2">
+            <div>
+              <div class="flex items-center gap-2 flex-wrap">
+                <h4 class="text-sm font-bold text-slate-900 ${s.status === 'tamamlandi' ? 'line-through text-slate-500' : ''}">${escapeHtml(s.name)}</h4>
+                ${s.amount > 0 ? `<span class="text-xs font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-lg">${formatCurrency(s.amount)}</span>` : ''}
+              </div>
+              <div class="flex items-center gap-3 text-xs text-slate-500 mt-1">
+                <span>Maaş Tarihi: <strong class="${isDue ? 'text-red-600' : 'text-slate-700'}">${formatDisplayDate(s.dueDate)}</strong></span>
+                ${s.note ? `<span>• ${escapeHtml(s.note)}</span>` : ''}
+              </div>
+            </div>
+            <button onclick="deleteSalaryItem('${s.id}')" class="text-slate-400 hover:text-red-600 p-1 no-print">
+              <i data-lucide="trash-2" class="w-4 h-4"></i>
+            </button>
+          </div>
+          <div class="flex justify-end pt-1">
+            ${renderStatusButtons(s.status, `setSalaryStatus('${s.id}', '__STATUS__')`)}
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    function renderSummaryCards() {
+      const day = ensureDayExists(currentDate);
+
+      // Bu ayki toplam seans ve ortalama hesaplama
+      const monthPrefix = currentDate.slice(0, 7);
+      let monthlyTotal = 0;
+      let monthlyActiveDays = 0;
+      Object.keys(appState.days).forEach(dKey => {
+        if (dKey.startsWith(monthPrefix)) {
+          const s = Number(appState.days[dKey].dailySessions || 0);
+          if (s > 0) {
+            monthlyTotal += s;
+            monthlyActiveDays++;
+          }
+        }
+      });
+      const monthlyAvg = monthlyActiveDays > 0 ? (monthlyTotal / monthlyActiveDays).toFixed(1) : '0';
+      document.getElementById('monthlySessionsTotal').textContent = monthlyTotal;
+      document.getElementById('monthlySessionsAvg').textContent = monthlyAvg;
+      document.getElementById('monthlyActiveDaysLabel').textContent = `(${monthlyActiveDays} gün)`;
+
+      // Temizlik İlerlemesi
+      const totalAreas = appState.cleaningTemplate.length;
+      let cleanedAreas = 0;
+      let missingCleanAreas = 0;
+      let remindCleanAreas = 0;
+
+      appState.cleaningTemplate.forEach(a => {
+        const st = day.cleaning[a.id]?.status || 'hatirlat';
+        if (st === 'tamamlandi') cleanedAreas++;
+        else if (st === 'eksik') missingCleanAreas++;
+        else remindCleanAreas++;
+      });
+
+      document.getElementById('cleaningProgressText').textContent = `${cleanedAreas} / ${totalAreas}`;
+      const pct = totalAreas > 0 ? Math.round((cleanedAreas / totalAreas) * 100) : 0;
+      document.getElementById('cleaningProgressBar').style.width = `${pct}%`;
+      document.getElementById('cleaningMissingCount').textContent = missingCleanAreas > 0
+        ? `${missingCleanAreas} Eksik, ${remindCleanAreas} Bekliyor`
+        : remindCleanAreas > 0
+        ? `${remindCleanAreas} Kontrol Bekliyor`
+        : 'Tümü Tamamlandı!';
+
+      // Kamera Rozeti
+      const camSt = day.camera?.status || 'hatirlat';
+      const camBadge = document.getElementById('cameraBadge');
+      if (camSt === 'tamamlandi') {
+        camBadge.textContent = 'Kamera: Yedeklendi';
+        camBadge.className = 'text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800';
+      } else if (camSt === 'eksik') {
+        camBadge.textContent = 'Kamera: Eksik!';
+        camBadge.className = 'text-xs font-semibold px-2.5 py-0.5 rounded-full bg-red-100 text-red-800';
+      } else {
+        camBadge.textContent = 'Kamera: Hatırlat';
+        camBadge.className = 'text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800';
+      }
+
+      // Bekleyen Ödeme Tutarı ve Genel Durum Sayıları (2. Şube dahil)
+      let pendingMoney = 0;
+      let countDone = cleanedAreas + (camSt === 'tamamlandi' ? 1 : 0);
+      let countMissing = missingCleanAreas + (camSt === 'eksik' ? 1 : 0);
+      let countRemind = remindCleanAreas + (camSt === 'hatirlat' ? 1 : 0);
+
+      appState.branch2Template.forEach(q => {
+        const st = day.branch2Checks?.[q.id]?.status || 'hatirlat';
+        if (st === 'tamamlandi') countDone++;
+        else if (st === 'eksik') countMissing++;
+        else countRemind++;
+      });
+
+      (appState.urgentPayments || []).forEach(u => {
+        if (u.status !== 'tamamlandi') pendingMoney += Number(u.amount || 0);
+        if (u.status === 'tamamlandi') countDone++;
+        else if (u.status === 'eksik') countMissing++;
+        else countRemind++;
+      });
+
+      (appState.salaries || []).forEach(s => {
+        if (s.status !== 'tamamlandi') pendingMoney += Number(s.amount || 0);
+        if (s.status === 'tamamlandi') countDone++;
+        else if (s.status === 'eksik') countMissing++;
+        else countRemind++;
+      });
+
+      const allNotes = [...(appState.pinnedNotes || []), ...(day.dailyNotes || [])];
+      allNotes.forEach(n => {
+        if (n.status === 'tamamlandi') countDone++;
+        else if (n.status === 'eksik') countMissing++;
+        else countRemind++;
+      });
+
+      document.getElementById('pendingPaymentsAmount').textContent = formatCurrency(pendingMoney);
+      document.getElementById('remindCountStat').textContent = countRemind;
+      document.getElementById('missingCountStat').textContent = countMissing;
+      document.getElementById('doneCountStat').textContent = countDone;
+
+      // Üst Uyarı Bandı
+      const banner = document.getElementById('alertBanner');
+      if (countMissing > 0 || countRemind > 0) {
+        banner.classList.remove('hidden');
+        document.getElementById('alertBannerTitle').textContent =
+          `${formatDisplayDate(currentDate)} Günü İçin ${countMissing} Eksik/Sıkıntılı ve ${countRemind} Hatırlatma/Sorulacak Madde Bulunuyor`;
+        document.getElementById('alertBannerDesc').textContent =
+          `Merkez temizlik, kamera, 2. şube günlük soruları ve ödemeleri kontrol ettikçe "Tamamlandı" olarak işaretleyebilirsiniz.`;
+      } else {
+        banner.classList.add('hidden');
+      }
+    }
+
+    function renderHistoryTable() {
+      const tbody = document.getElementById('historyTableBody');
+      const dates = Object.keys(appState.days).sort().reverse().slice(0, 7);
+
+      tbody.innerHTML = dates.map(dStr => {
+        const d = appState.days[dStr];
+        const totalAreas = appState.cleaningTemplate.length;
+        let doneClean = 0;
+        appState.cleaningTemplate.forEach(a => {
+          if (d.cleaning && d.cleaning[a.id]?.status === 'tamamlandi') doneClean++;
+        });
+
+        const totalB2 = appState.branch2Template.length;
+        let doneB2 = 0;
+        appState.branch2Template.forEach(q => {
+          if (d.branch2Checks && d.branch2Checks[q.id]?.status === 'tamamlandi') doneB2++;
+        });
+
+        return `<tr onclick="onDateChange('${dStr}')" class="hover:bg-indigo-50/50 cursor-pointer transition ${dStr === currentDate ? 'bg-indigo-50/80 font-semibold' : ''}">
+          <td class="py-2.5 px-3 text-slate-800">${formatDisplayDate(dStr)}</td>
+          <td class="py-2.5 px-2 text-center text-indigo-700 font-bold">${d.dailySessions || 0}</td>
+          <td class="py-2.5 px-2 text-center text-purple-700 font-bold">${d.branch2Sessions || 0}</td>
+          <td class="py-2.5 px-2 text-center">
+            <span class="px-2 py-0.5 rounded-full text-[11px] ${doneClean === totalAreas && totalAreas > 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">
+              ${doneClean}/${totalAreas}
+            </span>
+          </td>
+          <td class="py-2.5 px-2 text-center">
+            <span class="px-2 py-0.5 rounded-full text-[11px] ${doneB2 === totalB2 && totalB2 > 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-purple-100 text-purple-800'}">
+              ${doneB2}/${totalB2}
+            </span>
+          </td>
+        </tr>`;
+      }).join('');
+    }
+
+    // --- EXCEL (.XLSX) RAPOR ÇIKTISI ---
+    function exportToExcel() {
+      const wb = XLSX.utils.book_new();
+
+      // 1. Sayfa: Günlük Seans, Öğrenci ve Aylık Özet
+      const summaryRows = Object.keys(appState.days).sort().reverse().map(dStr => {
+        const d = appState.days[dStr];
+        const totalAreas = appState.cleaningTemplate.length;
+        let doneClean = 0;
+        appState.cleaningTemplate.forEach(a => {
+          if (d.cleaning && d.cleaning[a.id]?.status === 'tamamlandi') doneClean++;
+        });
+        return {
+          'Tarih': formatDisplayDate(dStr),
+          'Merkez Toplam Seans': d.dailySessions || 0,
+          'Merkez Bireysel Seans': d.indSessions || 0,
+          'Merkez Grup Seansı': d.grpSessions || 0,
+          'Merkez Öğrenci Sayısı': d.studentCount || 0,
+          '2. Şube Günlük Seans': d.branch2Sessions || 0,
+          '2. Şube Öğrenci Sayısı': d.branch2Students || 0,
+          'İki Şube Toplam Seans': (d.dailySessions || 0) + (d.branch2Sessions || 0),
+          'Temizlik Durumu': `${doneClean} / ${totalAreas} Tamamlandı`,
+          'Kamera Yedekleme': d.camera?.status === 'tamamlandi' ? 'Tamamlandı' : d.camera?.status === 'eksik' ? 'Eksik' : 'Hatırlat'
+        };
+      });
+      const wsSummary = XLSX.utils.json_to_sheet(summaryRows);
+      XLSX.utils.book_append_sheet(wb, wsSummary, 'Gunluk_ve_Aylik_Seans');
+
+      // 2. Sayfa: 2. Şube Günlük Kontrol ve Sorular
+      const day = ensureDayExists(currentDate);
+      const branch2Rows = appState.branch2Template.map(q => {
+        const c = (day.branch2Checks && day.branch2Checks[q.id]) || { status: 'hatirlat', answer: '' };
+        return {
+          'Tarih': formatDisplayDate(currentDate),
+          'Kategori': q.category,
+          '2. Şube Kontrol Sorusu': q.question,
+          'Durum': c.status === 'tamamlandi' ? 'Tamamlandı' : c.status === 'eksik' ? 'Eksik / Sıkıntı Var' : 'Hatırlat / Sorulacak',
+          'Cevap / Açıklama': c.answer || ''
+        };
+      });
+      const wsBranch2 = XLSX.utils.json_to_sheet(branch2Rows);
+      XLSX.utils.book_append_sheet(wb, wsBranch2, '2_Sube_Kontrol');
+
+      // 3. Sayfa: Seçili Günün Detaylı Temizlik Raporu
+      const cleaningRows = appState.cleaningTemplate.map(a => {
+        const c = day.cleaning[a.id] || { status: 'hatirlat', note: '' };
+        return {
+          'Tarih': formatDisplayDate(currentDate),
+          'Temizlik Alanı (WC / Oda)': a.name,
+          'Durum': c.status === 'tamamlandi' ? 'Tamamlandı' : c.status === 'eksik' ? 'Eksik' : 'Hatırlat',
+          'Açıklama / Not': c.note || ''
+        };
+      });
+      const wsCleaning = XLSX.utils.json_to_sheet(cleaningRows);
+      XLSX.utils.book_append_sheet(wb, wsCleaning, 'Temizlik_Kontrol');
+
+      // 4. Sayfa: Maaş ve Acil Ödemeler
+      const financeRows = [
+        ...(appState.urgentPayments || []).map(u => ({
+          'Tür': 'Acil Ödeme / Fatura',
+          'Başlık / Personel': u.title,
+          'Tutar (TL)': u.amount || 0,
+          'Ödeme Tarihi': formatDisplayDate(u.dueDate),
+          'Durum': u.status === 'tamamlandi' ? 'Ödendi (Tamamlandı)' : u.status === 'eksik' ? 'Eksik / Gecikti' : 'Hatırlat (Bekliyor)',
+          'Not': u.note || ''
+        })),
+        ...(appState.salaries || []).map(s => ({
+          'Tür': 'Personel Maaş',
+          'Başlık / Personel': s.name,
+          'Tutar (TL)': s.amount || 0,
+          'Ödeme Tarihi': formatDisplayDate(s.dueDate),
+          'Durum': s.status === 'tamamlandi' ? 'Ödendi (Tamamlandı)' : s.status === 'eksik' ? 'Eksik' : 'Hatırlat (Bekliyor)',
+          'Not': s.note || ''
+        }))
+      ];
+      const wsFinance = XLSX.utils.json_to_sheet(financeRows.length ? financeRows : [{ 'Bilgi': 'Kayıtlı ödeme yok' }]);
+      XLSX.utils.book_append_sheet(wb, wsFinance, 'Maas_ve_Odemeler');
+
+      XLSX.writeFile(wb, `Kurum_ve_2Sube_Raporu_${currentDate}.xlsx`);
+    }
+
+    // --- BULUT & YEDEKLEME FONKSİYONLARI ---
+    function openCloudModal() {
+      document.getElementById('institutionNameInput').value = appState.institutionName || '';
+      document.getElementById('branch2NameInput').value = appState.branch2Name || '';
+      document.getElementById('cloudEndpointInput').value = appState.cloudConfig?.endpoint || '';
+      document.getElementById('cloudSecretInput').value = appState.cloudConfig?.secret || '';
+      const modal = document.getElementById('cloudModal');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    }
+
+    function closeCloudModal() {
+      const modal = document.getElementById('cloudModal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+
+    function saveInstitutionName() {
+      const val1 = document.getElementById('institutionNameInput').value.trim();
+      const val2 = document.getElementById('branch2NameInput').value.trim();
+      if (val1) appState.institutionName = val1;
+      if (val2) appState.branch2Name = val2;
+      saveState();
+      renderAll();
+      alert('Başlıklar kaydedildi.');
+    }
+
+    function saveCloudConfig() {
+      appState.cloudConfig = {
+        endpoint: document.getElementById('cloudEndpointInput').value.trim(),
+        secret: document.getElementById('cloudSecretInput').value.trim()
+      };
+      saveState(false);
+      alert('Bulut bağlantı ayarları kaydedildi.');
+    }
+
+    async function pushToCloud(showAlert = false) {
+      const url = appState.cloudConfig?.endpoint;
+      if (!url) {
+        if (showAlert) alert('Lütfen önce geçerli bir Ücretsiz Bulut URL adresi girin.');
+        return;
+      }
+      try {
+        updateSyncIndicator('syncing');
+        const headers = { 'Content-Type': 'application/json' };
+        if (appState.cloudConfig.secret) {
+          headers['X-Master-Key'] = appState.cloudConfig.secret;
+          headers['Authorization'] = `Bearer ${appState.cloudConfig.secret}`;
+        }
+        const res = await fetch(url, {
+          method: url.includes('api.npoint.io') ? 'POST' : 'PUT',
+          headers,
+          body: JSON.stringify(appState)
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        updateSyncIndicator('cloud-ok');
+        if (showAlert) alert('Verileriniz başarıyla ücretsiz buluta yedeklendi!');
+      } catch (err) {
+        console.error(err);
+        updateSyncIndicator('error');
+        if (showAlert) alert('Buluta gönderilirken hata oluştu: ' + err.message);
+      }
+    }
+
+    async function pullFromCloud(showAlert = false) {
+      const url = appState.cloudConfig?.endpoint;
+      if (!url) {
+        if (showAlert) alert('Lütfen önce geçerli bir Ücretsiz Bulut URL adresi girin.');
+        return;
+      }
+      try {
+        updateSyncIndicator('syncing', 'Buluttan veriler çekiliyor...');
+        const headers = {};
+        if (appState.cloudConfig.secret) {
+          headers['X-Master-Key'] = appState.cloudConfig.secret;
+          headers['Authorization'] = `Bearer ${appState.cloudConfig.secret}`;
+        }
+        const res = await fetch(url, { headers });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const payload = data.record ? data.record : data;
+        if (payload && payload.days) {
+          const keepCloud = appState.cloudConfig;
+          appState = { ...appState, ...payload, cloudConfig: keepCloud };
+          saveState(false);
+          ensureDayExists(currentDate);
+          renderAll();
+          updateSyncIndicator('cloud-ok');
+          if (showAlert) alert('Buluttaki güncel veriler başarıyla yüklendi!');
+        } else {
+          if (showAlert) alert('Bulutta henüz kayıtlı veri bulunamadı.');
+        }
+      } catch (err) {
+        console.error(err);
+        updateSyncIndicator('error');
+        if (showAlert) alert('Buluttan veri çekilirken hata oluştu: ' + err.message);
+      }
+    }
+
+    function downloadJsonBackup() {
+      const blob = new Blob([JSON.stringify(appState, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `Kurum_Takip_Yedek_${currentDate}.json`;
+      a.click();
+    }
+
+    function restoreJsonBackup(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const imported = JSON.parse(e.target.result);
+          if (imported && imported.days) {
+            appState = imported;
+            saveState();
+            ensureDayExists(currentDate);
+            renderAll();
+            alert('Yedek dosyası başarıyla geri yüklendi!');
+            closeCloudModal();
+          } else {
+            alert('Geçersiz yedek dosyası formatı.');
+          }
+        } catch (err) {
+          alert('Dosya okunamadı: ' + err.message);
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    function formatCurrency(val) {
+      return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(val || 0);
+    }
+
+    function escapeHtml(str) {
+      return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      loadState();
+      const monthInput = document.getElementById('analyticsMonthInput');
+      if (monthInput) monthInput.value = currentDate.slice(0, 7);
+      renderAll();
+      if (appState.cloudConfig?.endpoint) {
+        pullFromCloud(false);
+      }
+    });
+  </script>
+</body>
+</html>
