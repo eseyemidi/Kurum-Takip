@@ -513,7 +513,7 @@
   </div>
 
   <!-- ORTAK PIN DEĞİŞTİRME MODALI -->
-  <div id="changePinModal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-xs z-50 hidden items-center justify-center p-4">
+  <div id="changePinModal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
     <div class="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 space-y-4">
       <h3 class="text-base font-extrabold text-slate-900">Ortak PIN Kodunu Değiştir</h3>
       <div>
@@ -526,6 +526,14 @@
           class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold py-2.5 rounded-xl">İptal</button>
         <button onclick="saveNewPinCode()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold py-2.5 rounded-xl">Kaydet</button>
       </div>
+    </div>
+  </div>
+
+  <!-- 1. VE 2. SEKME GÜNLÜK VERİ GİRİŞİ ÇEKMECE / MODAL PENCERESİ -->
+  <div id="dailyEntryModal" onclick="if(event.target === this) closeDailyEntryModal()"
+    class="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-50 hidden items-end sm:items-center justify-center sm:p-4">
+    <div id="dailyEntryModalContent"
+      class="bg-white w-full sm:max-w-xl rounded-t-3xl sm:rounded-3xl shadow-2xl border border-slate-200 max-h-[92vh] flex flex-col overflow-hidden">
     </div>
   </div>
 
@@ -1186,25 +1194,36 @@
         .filter(x => x.sessions > 0 || x.extraSessions > 0 || x.note || x.extraNote)
         .reverse();
 
+      const hasSelectedDayData = todayTotalSes > 0 || Number(dayRec.extraSessions || 0) > 0 || Boolean(dayRec.note) || Boolean(dayRec.extraNote);
+      const isSelectedToday = selDate === getTodayISO();
+
       const container = document.getElementById('branchTabContainer');
       container.innerHTML = `
-        <!-- ŞUBE DEV BANNER (KARIŞIKLIĞI ÖNLEYEN NET GÖRÜNÜM) -->
-        <div class="bg-gradient-to-r ${metaTheme.bannerBg} text-white rounded-3xl p-5 sm:p-6 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <!-- ŞUBE DEV BANNER (KARIŞIKLIĞI ÖNLEYEN NET GÖRÜNÜM + HIZLI VERİ GİRİŞ BUTONU) -->
+        <div class="bg-gradient-to-r ${metaTheme.bannerBg} text-white rounded-3xl p-4 sm:p-6 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div class="space-y-1">
-            <div class="inline-flex items-center gap-2 bg-white/15 backdrop-blur-xs px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">
+            <div class="inline-flex items-center gap-2 bg-white/15 backdrop-blur-sm px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider">
               <span>Aktif Şube Ekranı</span>
             </div>
             <h2 class="text-2xl sm:text-3xl font-extrabold tracking-tight">${metaTheme.title}</h2>
-            <p class="text-xs sm:text-sm text-white/80">Bu ekranda yapılan tüm girişler yalnızca <strong>${metaTheme.title}</strong> kayıtlarına işlenir.</p>
+            <p class="text-xs sm:text-sm text-white/80">Bu ekrandaki tüm özet ve kayıtlar yalnızca <strong>${metaTheme.title}</strong> verileridir.</p>
           </div>
 
-          <!-- Ay Seçici -->
-          <div class="bg-white/10 backdrop-blur-xs border border-white/20 rounded-2xl p-3 flex items-center gap-3 self-start md:self-center">
-            <div>
-              <label class="block text-[10px] font-bold uppercase text-white/80">İncelenen Ay / Dönem</label>
-              <input type="month" value="${selMonth}" onchange="onBranchMonthChange('${branchKey}', this.value)"
-                class="bg-white text-slate-900 text-sm font-extrabold rounded-xl px-3 py-1.5 mt-1 focus:outline-none cursor-pointer" />
+          <!-- Ay Seçici & + Günlük Veri Girişi Butonu -->
+          <div class="flex flex-wrap sm:flex-nowrap items-stretch sm:items-center gap-2.5 w-full md:w-auto">
+            <div class="bg-white/15 backdrop-blur-sm border border-white/25 rounded-2xl px-3 py-2 flex items-center justify-between gap-2 flex-1 sm:flex-initial">
+              <div>
+                <label class="block text-[10px] font-bold uppercase text-white/85">İncelenen Ay</label>
+                <input type="month" value="${selMonth}" onchange="onBranchMonthChange('${branchKey}', this.value)"
+                  class="bg-white text-slate-900 text-xs sm:text-sm font-extrabold rounded-xl px-2.5 py-1 mt-0.5 focus:outline-none cursor-pointer" />
+              </div>
             </div>
+
+            <button onclick="openDailyEntryModal('${branchKey}')"
+              class="bg-white hover:bg-slate-100 active:scale-95 text-slate-900 font-extrabold text-xs sm:text-sm px-4 py-3 rounded-2xl shadow-md transition flex items-center justify-center gap-2 shrink-0 cursor-pointer">
+              <i data-lucide="plus-circle" class="w-4 h-4 ${metaTheme.textAccent}"></i>
+              <span>+ Günlük Veri Girişi</span>
+            </button>
           </div>
         </div>
 
@@ -1316,109 +1335,38 @@
 
         </div>
 
-        <!-- GÜNLÜK SEANS, ÇALIŞAN PERSONEL, EK SEANS VE GÜNLÜK NOT GİRİŞ KARTI -->
-        <div class="bg-white rounded-3xl shadow-sm border-2 ${metaTheme.borderCls} overflow-hidden">
-          <div class="${metaTheme.softBg} px-4 sm:px-6 py-4 border-b ${metaTheme.borderCls} flex flex-wrap items-center justify-between gap-3">
-            <div class="flex items-center gap-2.5">
-              <i data-lucide="calendar-check-2" class="w-5 h-5 ${metaTheme.textAccent}"></i>
-              <div>
-                <h3 class="text-sm sm:text-base font-extrabold text-slate-900">${metaTheme.title} — Günlük Veri Girişi</h3>
-                <p class="text-xs text-slate-500">Seçili günün çalışan personel sayısı, girilen seans, ek/değerlendirme seansı ve açıklaması</p>
-              </div>
+        <!-- KOMPAKT SEÇİLİ GÜN ÖZETİ & VERİ GİRİŞİ AÇMA ÇUBUĞU (ORTAKLAR İÇİN SADE, SEKRETERLER İÇİN TEK TIK) -->
+        <div class="bg-white rounded-2xl px-4 py-3.5 shadow-sm border ${metaTheme.borderCls} flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div class="flex items-start sm:items-center gap-3 min-w-0">
+            <div class="${metaTheme.softBg} ${metaTheme.textAccent} p-2.5 rounded-xl shrink-0">
+              <i data-lucide="calendar-check-2" class="w-5 h-5"></i>
             </div>
-
-            <!-- Günlük Tarih Seçici -->
-            <div class="flex items-center bg-white rounded-xl p-1 border border-slate-300 shadow-2xs">
-              <button onclick="shiftBranchDay('${branchKey}', -1)" class="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600" title="Önceki Gün">
-                <i data-lucide="chevron-left" class="w-4 h-4"></i>
-              </button>
-              <input type="date" value="${selDate}" onchange="onBranchDateChange('${branchKey}', this.value)"
-                class="text-xs sm:text-sm font-extrabold text-slate-900 px-2 py-1 focus:outline-none cursor-pointer" />
-              <button onclick="shiftBranchDay('${branchKey}', 1)" class="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600" title="Sonraki Gün">
-                <i data-lucide="chevron-right" class="w-4 h-4"></i>
-              </button>
-              <button onclick="onBranchDateChange('${branchKey}', getTodayISO())" class="text-xs ${metaTheme.accentBtn} text-white font-bold px-2.5 py-1 rounded-lg ml-1">
-                Bugün
-              </button>
-            </div>
-          </div>
-
-          <div class="p-4 sm:p-6 space-y-5">
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              
-              <!-- 1. Çalışan Personel Sayısı -->
-              <div class="bg-slate-50 rounded-2xl p-4 border border-slate-200">
-                <label class="block text-xs font-extrabold text-slate-700 uppercase mb-1">1. Çalışan Personel Sayısı</label>
-                <p class="text-[11px] text-slate-500 mb-2">Bugün derse giren eğitimci sayısı</p>
-                <input type="number" min="0" id="inpStaffCount" value="${dayRec.staffCount || ''}" placeholder="Örn: 8"
-                  oninput="onDailyFieldInput('${branchKey}', '${selDate}', 'staffCount', Number(this.value))"
-                  class="w-full bg-white border-2 border-slate-300 rounded-xl px-3.5 py-2.5 text-2xl font-extrabold text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
+            <div class="min-w-0">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="text-xs font-extrabold text-slate-900">
+                  ${isSelectedToday ? `Bugün (${formatDateTR(selDate)})` : `Seçili Gün (${formatDateTR(selDate)})`}
+                </span>
+                ${hasSelectedDayData ? `
+                  <span class="text-xs font-bold ${metaTheme.softBg} ${metaTheme.textAccent} px-2.5 py-0.5 rounded-lg">
+                    ${todayStaff > 0 ? `${todayStaff} Personel • ` : ''}${todayTotalSes} Seans${Number(dayRec.extraSessions || 0) > 0 ? ` (+${dayRec.extraSessions} Ek)` : ''}${todayPerStaff !== '-' ? ` • Kişi başı ${todayPerStaff}` : ''}
+                  </span>
+                ` : `
+                  <span class="text-xs text-slate-400">Henüz bu gün için seans verisi girilmedi</span>
+                `}
               </div>
-
-              <!-- 2. Günlük Girilen Normal Seans -->
-              <div class="bg-slate-50 rounded-2xl p-4 border border-slate-200">
-                <label class="block text-xs font-extrabold ${metaTheme.textAccent} uppercase mb-1">2. Günlük Girilen Seans</label>
-                <p class="text-[11px] text-slate-500 mb-2">Bugün girilen toplam seans sayısı</p>
-                <input type="number" min="0" id="inpDailySessions" value="${dayRec.sessions || ''}" placeholder="Örn: 62"
-                  oninput="onDailyFieldInput('${branchKey}', '${selDate}', 'sessions', Number(this.value))"
-                  class="w-full bg-white border-2 border-sky-400 rounded-xl px-3.5 py-2.5 text-2xl font-extrabold text-slate-900 focus:ring-2 focus:ring-sky-500 focus:outline-none" />
-              </div>
-
-              <!-- 3. Ek Seans (Özel Seans & Değerlendirme Seansları) -->
-              <div class="bg-indigo-50/50 rounded-2xl p-4 border border-indigo-200">
-                <label class="block text-xs font-extrabold text-indigo-800 uppercase mb-1">3. Ek / Değerlendirme Seansı</label>
-                <p class="text-[11px] text-indigo-600/80 mb-2">Özel seanslar & ilk değerlendirmeler</p>
-                <input type="number" min="0" id="inpExtraSessions" value="${dayRec.extraSessions || ''}" placeholder="Örn: 3"
-                  oninput="onDailyFieldInput('${branchKey}', '${selDate}', 'extraSessions', Number(this.value))"
-                  class="w-full bg-white border-2 border-indigo-300 rounded-xl px-3.5 py-2.5 text-2xl font-extrabold text-indigo-950 focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
-              </div>
-
-              <!-- 4. Otomatik Günlük Personel Verimlilik Özeti -->
-              <div class="bg-slate-900 text-white rounded-2xl p-4 flex flex-col justify-between">
-                <div>
-                  <span class="text-[11px] font-bold uppercase text-sky-300">Günlük Personel / Seans Oranı</span>
-                  <div class="text-2xl font-extrabold mt-1" id="liveRatioLabel">
-                    ${todayStaff > 0 ? `${todayStaff} Personel / ${todayTotalSes} Seans` : `${todayTotalSes} Seans`}
-                  </div>
-                </div>
-                <div class="pt-2 border-t border-slate-700 flex items-center justify-between text-xs text-slate-300">
-                  <span>Kişi Başı Ort.:</span>
-                  <strong class="text-emerald-400 text-sm font-extrabold" id="livePerStaffVal">${todayPerStaff !== '-' ? todayPerStaff + ' seans' : 'Personel girin'}</strong>
-                </div>
-              </div>
-
-            </div>
-
-            <!-- Günlük Not & Ek Seans Açıklaması -->
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label class="block text-xs font-bold text-slate-700 mb-1">
-                  📝 Günlük Seans Notu (Düşük/Yüksek olma sebebi, izinli personel, hava muhalefeti vb.)
-                </label>
-                <input type="text" id="inpDailyNote" value="${escapeHtml(dayRec.note || '')}"
-                  placeholder="Örn: 1 personel raporlu olduğu için seans düştü / Telafilerle seans arttı..."
-                  oninput="onDailyFieldInput('${branchKey}', '${selDate}', 'note', this.value)"
-                  class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
-              </div>
-              <div>
-                <label class="block text-xs font-bold text-indigo-800 mb-1">
-                  ⭐ Özel Seans & Değerlendirme Seansı Detayı
-                </label>
-                <input type="text" id="inpExtraNote" value="${escapeHtml(dayRec.extraNote || '')}"
-                  placeholder="Örn: 2 yeni öğrenci değerlendirme alındı, 1 özel seans yapıldı..."
-                  oninput="onDailyFieldInput('${branchKey}', '${selDate}', 'extraNote', this.value)"
-                  class="w-full bg-indigo-50/40 border border-indigo-200 rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
-              </div>
-            </div>
-
-            <div class="flex justify-end">
-              <button onclick="saveToCloud('${metaTheme.title} günlük verileri kaydedildi!')"
-                class="${metaTheme.accentBtn} active:scale-95 text-white text-xs sm:text-sm font-bold px-5 py-2.5 rounded-xl shadow-sm transition flex items-center gap-2">
-                <i data-lucide="check-circle-2" class="w-4 h-4"></i>
-                <span>Günlük Bilgileri Kaydet</span>
-              </button>
+              ${(dayRec.note || dayRec.extraNote) ? `
+                <p class="text-[11px] text-slate-500 truncate mt-0.5">
+                  ${dayRec.note ? `📝 ${escapeHtml(dayRec.note)}` : ''} ${dayRec.extraNote ? `⭐ ${escapeHtml(dayRec.extraNote)}` : ''}
+                </p>
+              ` : ''}
             </div>
           </div>
+
+          <button onclick="openDailyEntryModal('${branchKey}', '${selDate}')"
+            class="${metaTheme.accentBtn} active:scale-95 text-white text-xs font-extrabold px-4 py-2.5 rounded-xl shadow-sm transition flex items-center justify-center gap-2 shrink-0 cursor-pointer">
+            <i data-lucide="${hasSelectedDayData ? 'pencil' : 'plus-circle'}" class="w-4 h-4"></i>
+            <span>${hasSelectedDayData ? 'Günlük Veriyi Düzenle' : '+ Günlük Veri Girişi'}</span>
+          </button>
         </div>
 
         <!-- AYLIK SEANS TAKİBİ & ORTALAMA ANALİZİ GRAFİĞİ (SADECE BU ŞUBE) -->
@@ -1429,8 +1377,8 @@
               <p class="text-xs text-slate-500">Ay içi kişi başı ortalama verimlilik: <strong>${stats.perStaffAvg > 0 ? stats.perStaffAvg.toFixed(1) + ' seans/personel' : 'Veri bekleniyor'}</strong> • En yoğun gün: <strong>${stats.maxSesDate} (${stats.maxSes} seans)</strong></p>
             </div>
             <div class="flex items-center gap-3 text-xs font-semibold">
-              <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-xs ${metaTheme.barColor} inline-block"></span> Normal Seans</span>
-              <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-xs ${metaTheme.extraBarColor} inline-block"></span> Ek/Değ. Seans</span>
+              <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm ${metaTheme.barColor} inline-block"></span> Normal Seans</span>
+              <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm ${metaTheme.extraBarColor} inline-block"></span> Ek/Değ. Seans</span>
             </div>
           </div>
 
@@ -1468,11 +1416,12 @@
                   <th class="py-2.5 px-3 font-bold text-center">Kişi Başı</th>
                   <th class="py-2.5 px-3 font-bold text-center">Ek / Değ. Seans</th>
                   <th class="py-2.5 px-3 font-bold">Günlük Açıklama & Değerlendirme Notu</th>
+                  <th class="py-2.5 px-3 font-bold text-right">İşlem</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-100">
                 ${recordedDaysDesc.length === 0 ? `
-                  <tr><td colspan="6" class="py-6 text-center text-xs text-slate-400">Bu ay için henüz günlük seans verisi girilmemiş.</td></tr>
+                  <tr><td colspan="7" class="py-6 text-center text-xs text-slate-400">Bu ay için henüz günlük seans verisi girilmemiş. Üstteki <strong>+ Günlük Veri Girişi</strong> butonundan ekleyebilirsiniz.</td></tr>
                 ` : recordedDaysDesc.map(r => `
                   <tr onclick="onBranchDateChange('${branchKey}', '${r.dateStr}')" class="hover:bg-slate-50 cursor-pointer ${r.dateStr === selDate ? 'bg-sky-50/60 font-semibold' : ''}">
                     <td class="py-2.5 px-3 font-bold text-slate-800 whitespace-nowrap">${formatDateTR(r.dateStr)}</td>
@@ -1485,11 +1434,204 @@
                       ${r.extraNote ? `<div class="text-indigo-700 font-medium">⭐ ${escapeHtml(r.extraNote)}</div>` : ''}
                       ${!r.note && !r.extraNote ? '<span class="text-slate-300">-</span>' : ''}
                     </td>
+                    <td class="py-2.5 px-3 text-right whitespace-nowrap">
+                      <button onclick="event.stopPropagation(); openDailyEntryModal('${branchKey}', '${r.dateStr}')"
+                        class="inline-flex items-center gap-1 text-[11px] font-bold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-2.5 py-1 rounded-lg transition">
+                        <i data-lucide="pencil" class="w-3 h-3"></i>
+                        <span>Düzenle</span>
+                      </button>
+                    </td>
                   </tr>
                 `).join('')}
               </tbody>
             </table>
           </div>
+        </div>
+      `;
+    }
+
+    // ============================================================================
+    // GÜNLÜK VERİ GİRİŞİ ÇEKMECE / MODAL YÖNETİMİ (1. VE 2. SEKME)
+    // ============================================================================
+    let dailyModalBranch = null;
+
+    function openDailyEntryModal(branchKey, dateStr = null) {
+      dailyModalBranch = branchKey;
+      if (dateStr) {
+        selectedDates[branchKey] = dateStr;
+        selectedMonths[branchKey] = dateStr.slice(0, 7);
+      }
+      renderDailyEntryModalContent();
+      const modal = document.getElementById('dailyEntryModal');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+      document.body.style.overflow = 'hidden';
+      lucide.createIcons();
+    }
+
+    function closeDailyEntryModal() {
+      const modal = document.getElementById('dailyEntryModal');
+      if (modal) {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+      }
+      document.body.style.overflow = '';
+      const br = dailyModalBranch;
+      dailyModalBranch = null;
+      if (br && (activeTab === 'ayvalik' || activeTab === 'bigadic')) {
+        renderBranchDashboard(activeTab);
+        lucide.createIcons();
+      }
+    }
+
+    function saveAndCloseDailyModal() {
+      const br = dailyModalBranch || activeTab;
+      clearTimeout(saveDebounceTimer);
+      saveToCloud(`${BRANCH_META[br]?.title || 'Şube'} günlük verileri kaydedildi!`);
+      closeDailyEntryModal();
+    }
+
+    function onModalDatePick(newDate) {
+      if (!newDate || !dailyModalBranch) return;
+      selectedDates[dailyModalBranch] = newDate;
+      selectedMonths[dailyModalBranch] = newDate.slice(0, 7);
+      renderDailyEntryModalContent();
+      lucide.createIcons();
+    }
+
+    function shiftModalDay(delta) {
+      if (!dailyModalBranch) return;
+      const p = selectedDates[dailyModalBranch].split('-').map(Number);
+      const dt = new Date(p[0], p[1] - 1, p[2]);
+      dt.setDate(dt.getDate() + delta);
+      const iso = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+      onModalDatePick(iso);
+    }
+
+    function renderDailyEntryModalContent() {
+      const branchKey = dailyModalBranch;
+      if (!branchKey) return;
+      const metaTheme = BRANCH_META[branchKey];
+      const selDate = selectedDates[branchKey];
+      const dayRec = getBranchDayRecord(branchKey, selDate);
+
+      const todayTotalSes = Number(dayRec.sessions || 0);
+      const todayStaff = Number(dayRec.staffCount || 0);
+      const todayPerStaff = todayStaff > 0 ? (todayTotalSes / todayStaff).toFixed(1) : '-';
+
+      const box = document.getElementById('dailyEntryModalContent');
+      box.innerHTML = `
+        <!-- Modal Başlık (Şube Rengine Göre Net Ayırt Edici) -->
+        <div class="bg-gradient-to-r ${metaTheme.bannerBg} text-white px-5 pt-3 pb-4 shrink-0">
+          <div class="w-10 h-1 bg-white/40 rounded-full mx-auto mb-2.5 sm:hidden"></div>
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <span class="text-[10px] font-bold uppercase tracking-wider bg-white/20 px-2.5 py-0.5 rounded-full">Günlük Seans & Personel Girişi</span>
+              <h3 class="text-lg sm:text-xl font-extrabold mt-1">${metaTheme.title}</h3>
+            </div>
+            <button onclick="closeDailyEntryModal()" class="p-2 rounded-xl bg-white/15 hover:bg-white/25 text-white transition" title="Kapat">
+              <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+          </div>
+
+          <!-- Tarih Seçici Çubuğu -->
+          <div class="mt-3 flex items-center justify-between bg-white text-slate-900 rounded-2xl p-1.5 shadow-sm">
+            <button onclick="shiftModalDay(-1)" class="p-2 hover:bg-slate-100 rounded-xl text-slate-700" title="Önceki Gün">
+              <i data-lucide="chevron-left" class="w-4 h-4"></i>
+            </button>
+            <input type="date" value="${selDate}" onchange="onModalDatePick(this.value)"
+              class="text-xs sm:text-sm font-extrabold text-slate-900 px-2 py-1 focus:outline-none cursor-pointer text-center" />
+            <div class="flex items-center gap-1">
+              <button onclick="shiftModalDay(1)" class="p-2 hover:bg-slate-100 rounded-xl text-slate-700" title="Sonraki Gün">
+                <i data-lucide="chevron-right" class="w-4 h-4"></i>
+              </button>
+              <button onclick="onModalDatePick(getTodayISO())" class="text-xs ${metaTheme.accentBtn} text-white font-bold px-3 py-1.5 rounded-xl">
+                Bugün
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Form Alanları (Kaydırılabilir Orta Alan) -->
+        <div class="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1">
+          
+          <!-- 1. ve 2. Alan Yan Yana (Mobilde de Kompakt ve Pratik) -->
+          <div class="grid grid-cols-2 gap-3">
+            <div class="bg-slate-50 rounded-2xl p-3.5 border border-slate-200">
+              <label class="block text-[11px] font-extrabold text-slate-700 uppercase mb-0.5">1. Çalışan Personel</label>
+              <p class="text-[10px] text-slate-500 mb-2">Derse giren eğitimci</p>
+              <input type="number" inputmode="numeric" min="0" value="${dayRec.staffCount || ''}" placeholder="Örn: 8"
+                oninput="onDailyFieldInput('${branchKey}', '${selDate}', 'staffCount', Number(this.value))"
+                class="w-full bg-white border-2 border-slate-300 rounded-xl px-3 py-2 text-xl sm:text-2xl font-extrabold text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
+            </div>
+
+            <div class="bg-slate-50 rounded-2xl p-3.5 border border-slate-200">
+              <label class="block text-[11px] font-extrabold ${metaTheme.textAccent} uppercase mb-0.5">2. Girilen Seans</label>
+              <p class="text-[10px] text-slate-500 mb-2">Bugün toplam seans</p>
+              <input type="number" inputmode="numeric" min="0" value="${dayRec.sessions || ''}" placeholder="Örn: 62"
+                oninput="onDailyFieldInput('${branchKey}', '${selDate}', 'sessions', Number(this.value))"
+                class="w-full bg-white border-2 border-sky-400 rounded-xl px-3 py-2 text-xl sm:text-2xl font-extrabold text-slate-900 focus:ring-2 focus:ring-sky-500 focus:outline-none" />
+            </div>
+          </div>
+
+          <!-- 3. Ek Seans & 4. Canlı Verimlilik Yan Yana -->
+          <div class="grid grid-cols-2 gap-3">
+            <div class="bg-indigo-50/60 rounded-2xl p-3.5 border border-indigo-200">
+              <label class="block text-[11px] font-extrabold text-indigo-800 uppercase mb-0.5">3. Ek / Değ. Seansı</label>
+              <p class="text-[10px] text-indigo-600/80 mb-2">Özel & değerlendirme</p>
+              <input type="number" inputmode="numeric" min="0" value="${dayRec.extraSessions || ''}" placeholder="Örn: 3"
+                oninput="onDailyFieldInput('${branchKey}', '${selDate}', 'extraSessions', Number(this.value))"
+                class="w-full bg-white border-2 border-indigo-300 rounded-xl px-3 py-2 text-xl sm:text-2xl font-extrabold text-indigo-950 focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
+            </div>
+
+            <div class="bg-slate-900 text-white rounded-2xl p-3.5 flex flex-col justify-between">
+              <div>
+                <span class="text-[10px] font-bold uppercase text-sky-300">Personel / Seans</span>
+                <div class="text-base sm:text-lg font-extrabold mt-1 leading-tight" id="liveRatioLabel">
+                  ${todayStaff > 0 ? `${todayStaff} Pers. / ${todayTotalSes} Seans` : `${todayTotalSes} Seans`}
+                </div>
+              </div>
+              <div class="pt-2 mt-2 border-t border-slate-700 flex items-center justify-between text-[11px] text-slate-300">
+                <span>Kişi Başı:</span>
+                <strong class="text-emerald-400 font-extrabold" id="livePerStaffVal">${todayPerStaff !== '-' ? todayPerStaff + ' seans' : '-'}</strong>
+              </div>
+            </div>
+          </div>
+
+          <!-- Günlük Not & Ek Seans Açıklaması -->
+          <div class="space-y-3">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">
+                📝 Günlük Seans Notu (Düşük/yüksek olma sebebi, izinli personel vb.)
+              </label>
+              <input type="text" value="${escapeHtml(dayRec.note || '')}"
+                placeholder="Örn: 1 personel raporlu olduğu için seans düştü..."
+                oninput="onDailyFieldInput('${branchKey}', '${selDate}', 'note', this.value)"
+                class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-indigo-800 mb-1">
+                ⭐ Özel Seans & Değerlendirme Seansı Detayı
+              </label>
+              <input type="text" value="${escapeHtml(dayRec.extraNote || '')}"
+                placeholder="Örn: 2 yeni öğrenci değerlendirme alındı..."
+                oninput="onDailyFieldInput('${branchKey}', '${selDate}', 'extraNote', this.value)"
+                class="w-full bg-indigo-50/40 border border-indigo-200 rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Alt Sabit Kaydet ve Kapat Çubuğu -->
+        <div class="px-4 sm:px-5 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2.5 shrink-0">
+          <button onclick="closeDailyEntryModal()"
+            class="px-4 py-2.5 rounded-xl bg-slate-200/80 hover:bg-slate-200 text-slate-700 text-xs sm:text-sm font-bold transition">
+            Kapat
+          </button>
+          <button onclick="saveAndCloseDailyModal()"
+            class="${metaTheme.accentBtn} active:scale-95 text-white text-xs sm:text-sm font-extrabold px-5 py-2.5 rounded-xl shadow-md transition flex items-center gap-2 cursor-pointer">
+            <i data-lucide="check-circle-2" class="w-4 h-4"></i>
+            <span>Kaydet ve Kapat</span>
+          </button>
         </div>
       `;
     }
@@ -1534,13 +1676,13 @@
       const rec = getBranchDayRecord(branchKey, dateStr);
       rec[field] = val;
 
-      // Input odağını kaybetmeden canlı oran kartını ve üst toplamları anlık güncelle
+      // Modal içindeki canlı personel/seans oranını odak kaybetmeden güncelle
       const stf = Number(rec.staffCount || 0);
       const ses = Number(rec.sessions || 0);
       const ratioEl = document.getElementById('liveRatioLabel');
       const perEl = document.getElementById('livePerStaffVal');
-      if (ratioEl) ratioEl.textContent = stf > 0 ? `${stf} Personel / ${ses} Seans` : `${ses} Seans`;
-      if (perEl) perEl.textContent = stf > 0 ? `${(ses / stf).toFixed(1)} seans` : 'Personel girin';
+      if (ratioEl) ratioEl.textContent = stf > 0 ? `${stf} Pers. / ${ses} Seans` : `${ses} Seans`;
+      if (perEl) perEl.textContent = stf > 0 ? `${(ses / stf).toFixed(1)} seans` : '-';
 
       const stats = calculateMonthStats(branchKey, selectedMonths[branchKey]);
       const totEl = document.getElementById('statTotalSes');
@@ -2326,6 +2468,13 @@
     // ============================================================================
     // 12. BAŞLATMA
     // ============================================================================
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        if (dailyModalBranch) closeDailyEntryModal();
+        closePinModal();
+      }
+    });
+
     window.addEventListener('DOMContentLoaded', () => {
       updatePartnerLockUI();
       updateTabNavigationUI();
