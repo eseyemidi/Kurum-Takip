@@ -1105,6 +1105,7 @@
       let totalExtraSessions = 0;
       let activeDays = 0;
       let totalStaffSum = 0;
+      let totalSessionsOnStaffDays = 0;
       let staffDaysCount = 0;
       let maxSes = 0;
       let maxSesDate = '-';
@@ -1116,21 +1117,23 @@
         const rec = daysObj[dStr];
         const ses = Number(rec?.sessions || 0);
         const ext = Number(rec?.extraSessions || 0);
+        const dayCombined = ses + ext;
         const stf = Number(rec?.staffCount || 0);
 
         if (ses > 0) {
           totalNormalSessions += ses;
           activeDays++;
-          if (ses > maxSes) {
-            maxSes = ses;
-            maxSesDate = `${String(d).padStart(2, '0')}.${String(monthNum).padStart(2, '0')}`;
-          }
         }
         if (ext > 0) {
           totalExtraSessions += ext;
         }
-        if (stf > 0 && ses > 0) {
+        if (dayCombined > maxSes) {
+          maxSes = dayCombined;
+          maxSesDate = `${String(d).padStart(2, '0')}.${String(monthNum).padStart(2, '0')}`;
+        }
+        if (stf > 0 && dayCombined > 0) {
           totalStaffSum += stf;
+          totalSessionsOnStaffDays += dayCombined;
           staffDaysCount++;
         }
 
@@ -1146,7 +1149,8 @@
       }
 
       const dailyAvg = activeDays > 0 ? (totalNormalSessions / activeDays) : 0;
-      const perStaffAvg = (staffDaysCount > 0 && totalStaffSum > 0) ? (totalNormalSessions / totalStaffSum) : 0;
+      // Personel doluluğu: (Normal Seans + Ek/Değerlendirme Seansı) / Çalışan Personel
+      const perStaffAvg = (staffDaysCount > 0 && totalStaffSum > 0) ? (totalSessionsOnStaffDays / totalStaffSum) : 0;
 
       return {
         totalNormalSessions,
@@ -1177,10 +1181,12 @@
         ? Number(mMeta.lastMonthAvgManual)
         : Number(prevStats.dailyAvg.toFixed(1));
 
-      // Bugün personel başı seans verimliliği
+      // Bugün personel başı seans doluluğu: (Normal Seans + Ek/Değ. Seansı) / Personel
       const todayTotalSes = Number(dayRec.sessions || 0);
+      const todayExtraSes = Number(dayRec.extraSessions || 0);
+      const todayCombinedSes = todayTotalSes + todayExtraSes;
       const todayStaff = Number(dayRec.staffCount || 0);
-      const todayPerStaff = todayStaff > 0 ? (todayTotalSes / todayStaff).toFixed(1) : '-';
+      const todayPerStaff = todayStaff > 0 ? (todayCombinedSes / todayStaff).toFixed(1) : '-';
 
       // Ay sonu tahmini projeksiyon (Günlük Ortalama x Bu Ay Çalışılacak Gün Sayısı)
       const plannedDays = Number(mMeta.plannedWorkDays || 0);
@@ -1348,7 +1354,7 @@
                 </span>
                 ${hasSelectedDayData ? `
                   <span class="text-xs font-bold ${metaTheme.softBg} ${metaTheme.textAccent} px-2.5 py-0.5 rounded-lg">
-                    ${todayStaff > 0 ? `${todayStaff} Personel • ` : ''}${todayTotalSes} Seans${Number(dayRec.extraSessions || 0) > 0 ? ` (+${dayRec.extraSessions} Ek)` : ''}${todayPerStaff !== '-' ? ` • Kişi başı ${todayPerStaff}` : ''}
+                    ${todayStaff > 0 ? `${todayStaff} Personel • ` : ''}${todayTotalSes} Seans${todayExtraSes > 0 ? ` + ${todayExtraSes} Ek (Top. ${todayCombinedSes})` : ''}${todayPerStaff !== '-' ? ` • Kişi başı ${todayPerStaff}` : ''}
                   </span>
                 ` : `
                   <span class="text-xs text-slate-400">Henüz bu gün için seans verisi girilmedi</span>
@@ -1374,7 +1380,7 @@
           <div class="flex flex-wrap items-center justify-between gap-2">
             <div>
               <h3 class="text-base font-extrabold text-slate-900">${metaTheme.title} — ${formatMonthTR(selMonth)} Aylık Seans Analizi</h3>
-              <p class="text-xs text-slate-500">Ay içi kişi başı ortalama verimlilik: <strong>${stats.perStaffAvg > 0 ? stats.perStaffAvg.toFixed(1) + ' seans/personel' : 'Veri bekleniyor'}</strong> • En yoğun gün: <strong>${stats.maxSesDate} (${stats.maxSes} seans)</strong></p>
+              <p class="text-xs text-slate-500">Ay içi kişi başı doluluk (Normal+Ek): <strong>${stats.perStaffAvg > 0 ? stats.perStaffAvg.toFixed(1) + ' seans/personel' : 'Veri bekleniyor'}</strong> • En yoğun gün: <strong>${stats.maxSesDate} (${stats.maxSes} seans)</strong></p>
             </div>
             <div class="flex items-center gap-3 text-xs font-semibold">
               <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm ${metaTheme.barColor} inline-block"></span> Normal Seans</span>
@@ -1391,7 +1397,7 @@
               const isSelected = item.dateStr === selDate;
               return `
                 <div onclick="onBranchDateChange('${branchKey}', '${item.dateStr}')"
-                  title="${formatDateTR(item.dateStr)}: ${item.staffCount ? item.staffCount + ' Personel, ' : ''}${item.sessions} Seans ${item.extraSessions ? '(+' + item.extraSessions + ' Ek)' : ''} ${item.note ? '— ' + escapeHtml(item.note) : ''}"
+                  title="${formatDateTR(item.dateStr)}: ${item.staffCount ? item.staffCount + ' Personel, ' : ''}${item.sessions} Seans ${item.extraSessions ? '(+' + item.extraSessions + ' Ek = ' + tot + ' Top.)' : ''}${item.staffCount ? ' • Kişi başı ' + (tot / item.staffCount).toFixed(1) : ''} ${item.note ? '— ' + escapeHtml(item.note) : ''}"
                   class="flex flex-col items-center cursor-pointer min-w-[28px] px-0.5 py-1 rounded-xl transition ${isSelected ? 'bg-slate-200/90 ring-2 ring-slate-800' : 'hover:bg-slate-200/50'}">
                   <span class="text-[10px] font-extrabold ${tot > 0 ? 'text-slate-800' : 'text-slate-300'} mb-1">${tot > 0 ? tot : ''}</span>
                   <div class="w-4.5 bg-slate-200/70 rounded-t-md flex flex-col justify-end overflow-hidden" style="height: 76px; width: 18px;">
@@ -1412,23 +1418,27 @@
                 <tr class="bg-slate-100 text-slate-600 border-b border-slate-200 text-xs uppercase">
                   <th class="py-2.5 px-3 font-bold">Tarih</th>
                   <th class="py-2.5 px-3 font-bold text-center">Personel</th>
-                  <th class="py-2.5 px-3 font-bold text-center">Girilen Seans</th>
+                  <th class="py-2.5 px-3 font-bold text-center">Normal Seans</th>
+                  <th class="py-2.5 px-3 font-bold text-center">Ek / Değ.</th>
+                  <th class="py-2.5 px-3 font-bold text-center">Toplam</th>
                   <th class="py-2.5 px-3 font-bold text-center">Kişi Başı</th>
-                  <th class="py-2.5 px-3 font-bold text-center">Ek / Değ. Seans</th>
                   <th class="py-2.5 px-3 font-bold">Günlük Açıklama & Değerlendirme Notu</th>
                   <th class="py-2.5 px-3 font-bold text-right">İşlem</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-100">
                 ${recordedDaysDesc.length === 0 ? `
-                  <tr><td colspan="7" class="py-6 text-center text-xs text-slate-400">Bu ay için henüz günlük seans verisi girilmemiş. Üstteki <strong>+ Günlük Veri Girişi</strong> butonundan ekleyebilirsiniz.</td></tr>
-                ` : recordedDaysDesc.map(r => `
+                  <tr><td colspan="8" class="py-6 text-center text-xs text-slate-400">Bu ay için henüz günlük seans verisi girilmemiş. Üstteki <strong>+ Günlük Veri Girişi</strong> butonundan ekleyebilirsiniz.</td></tr>
+                ` : recordedDaysDesc.map(r => {
+                  const rowCombined = Number(r.sessions || 0) + Number(r.extraSessions || 0);
+                  return `
                   <tr onclick="onBranchDateChange('${branchKey}', '${r.dateStr}')" class="hover:bg-slate-50 cursor-pointer ${r.dateStr === selDate ? 'bg-sky-50/60 font-semibold' : ''}">
                     <td class="py-2.5 px-3 font-bold text-slate-800 whitespace-nowrap">${formatDateTR(r.dateStr)}</td>
                     <td class="py-2.5 px-3 text-center font-semibold text-slate-700">${r.staffCount > 0 ? r.staffCount + ' Kişi' : '-'}</td>
                     <td class="py-2.5 px-3 text-center font-extrabold ${metaTheme.textAccent}">${r.sessions}</td>
-                    <td class="py-2.5 px-3 text-center text-xs text-slate-600">${r.staffCount > 0 ? (r.sessions / r.staffCount).toFixed(1) : '-'}</td>
                     <td class="py-2.5 px-3 text-center font-bold text-indigo-700">${r.extraSessions > 0 ? '+' + r.extraSessions : '-'}</td>
+                    <td class="py-2.5 px-3 text-center font-extrabold text-slate-900">${rowCombined}</td>
+                    <td class="py-2.5 px-3 text-center font-extrabold text-emerald-700">${r.staffCount > 0 ? (rowCombined / r.staffCount).toFixed(1) : '-'}</td>
                     <td class="py-2.5 px-3 text-xs text-slate-600">
                       ${r.note ? `<div>• ${escapeHtml(r.note)}</div>` : ''}
                       ${r.extraNote ? `<div class="text-indigo-700 font-medium">⭐ ${escapeHtml(r.extraNote)}</div>` : ''}
@@ -1442,7 +1452,8 @@
                       </button>
                     </td>
                   </tr>
-                `).join('')}
+                `;
+                }).join('')}
               </tbody>
             </table>
           </div>
@@ -1516,8 +1527,10 @@
       const dayRec = getBranchDayRecord(branchKey, selDate);
 
       const todayTotalSes = Number(dayRec.sessions || 0);
+      const todayExtraSes = Number(dayRec.extraSessions || 0);
+      const todayCombinedSes = todayTotalSes + todayExtraSes;
       const todayStaff = Number(dayRec.staffCount || 0);
-      const todayPerStaff = todayStaff > 0 ? (todayTotalSes / todayStaff).toFixed(1) : '-';
+      const todayPerStaff = todayStaff > 0 ? (todayCombinedSes / todayStaff).toFixed(1) : '-';
 
       const box = document.getElementById('dailyEntryModalContent');
       box.innerHTML = `
@@ -1567,7 +1580,7 @@
 
             <div class="bg-slate-50 rounded-2xl p-3.5 border border-slate-200">
               <label class="block text-[11px] font-extrabold ${metaTheme.textAccent} uppercase mb-0.5">2. Girilen Seans</label>
-              <p class="text-[10px] text-slate-500 mb-2">Bugün toplam seans</p>
+              <p class="text-[10px] text-slate-500 mb-2">Bugün normal seans</p>
               <input type="number" inputmode="numeric" min="0" value="${dayRec.sessions || ''}" placeholder="Örn: 62"
                 oninput="onDailyFieldInput('${branchKey}', '${selDate}', 'sessions', Number(this.value))"
                 class="w-full bg-white border-2 border-sky-400 rounded-xl px-3 py-2 text-xl sm:text-2xl font-extrabold text-slate-900 focus:ring-2 focus:ring-sky-500 focus:outline-none" />
@@ -1579,16 +1592,16 @@
             <div class="bg-indigo-50/60 rounded-2xl p-3.5 border border-indigo-200">
               <label class="block text-[11px] font-extrabold text-indigo-800 uppercase mb-0.5">3. Ek / Değ. Seansı</label>
               <p class="text-[10px] text-indigo-600/80 mb-2">Özel & değerlendirme</p>
-              <input type="number" inputmode="numeric" min="0" value="${dayRec.extraSessions || ''}" placeholder="Örn: 3"
+              <input type="number" inputmode="numeric" min="0" value="${dayRec.extraSessions || ''}" placeholder="Örn: 5"
                 oninput="onDailyFieldInput('${branchKey}', '${selDate}', 'extraSessions', Number(this.value))"
                 class="w-full bg-white border-2 border-indigo-300 rounded-xl px-3 py-2 text-xl sm:text-2xl font-extrabold text-indigo-950 focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
             </div>
 
             <div class="bg-slate-900 text-white rounded-2xl p-3.5 flex flex-col justify-between">
               <div>
-                <span class="text-[10px] font-bold uppercase text-sky-300">Personel / Seans</span>
+                <span class="text-[10px] font-bold uppercase text-sky-300">Personel Doluluk (Top.)</span>
                 <div class="text-base sm:text-lg font-extrabold mt-1 leading-tight" id="liveRatioLabel">
-                  ${todayStaff > 0 ? `${todayStaff} Pers. / ${todayTotalSes} Seans` : `${todayTotalSes} Seans`}
+                  ${todayStaff > 0 ? `${todayStaff} Pers. / ${todayCombinedSes} Top.` : `${todayCombinedSes} Top. Seans`}
                 </div>
               </div>
               <div class="pt-2 mt-2 border-t border-slate-700 flex items-center justify-between text-[11px] text-slate-300">
@@ -1676,13 +1689,15 @@
       const rec = getBranchDayRecord(branchKey, dateStr);
       rec[field] = val;
 
-      // Modal içindeki canlı personel/seans oranını odak kaybetmeden güncelle
+      // Modal içindeki canlı personel doluluk oranını (Normal + Ek Seans) / Personel olarak anlık güncelle
       const stf = Number(rec.staffCount || 0);
       const ses = Number(rec.sessions || 0);
+      const ext = Number(rec.extraSessions || 0);
+      const combined = ses + ext;
       const ratioEl = document.getElementById('liveRatioLabel');
       const perEl = document.getElementById('livePerStaffVal');
-      if (ratioEl) ratioEl.textContent = stf > 0 ? `${stf} Pers. / ${ses} Seans` : `${ses} Seans`;
-      if (perEl) perEl.textContent = stf > 0 ? `${(ses / stf).toFixed(1)} seans` : '-';
+      if (ratioEl) ratioEl.textContent = stf > 0 ? `${stf} Pers. / ${combined} Top.` : `${combined} Top. Seans`;
+      if (perEl) perEl.textContent = stf > 0 ? `${(combined / stf).toFixed(1)} seans` : '-';
 
       const stats = calculateMonthStats(branchKey, selectedMonths[branchKey]);
       const totEl = document.getElementById('statTotalSes');
@@ -2394,12 +2409,16 @@
       // 1. Ayvalık Günlük Seanslar
       const ayvRows = Object.keys(appData.branches.ayvalik.days || {}).sort().reverse().map(d => {
         const r = appData.branches.ayvalik.days[d];
+        const comb = Number(r.sessions || 0) + Number(r.extraSessions || 0);
+        const stf = Number(r.staffCount || 0);
         return {
           'Tarih': formatDateTR(d),
           'Şube': 'Ayvalık',
-          'Çalışan Personel': r.staffCount || 0,
+          'Çalışan Personel': stf,
           'Girilen Normal Seans': r.sessions || 0,
           'Ek / Değerlendirme Seansı': r.extraSessions || 0,
+          'Toplam Seans (Normal+Ek)': comb,
+          'Kişi Başı Ortalama': stf > 0 ? Number((comb / stf).toFixed(1)) : '-',
           'Günlük Not': r.note || '',
           'Ek Seans Notu': r.extraNote || ''
         };
@@ -2409,12 +2428,16 @@
       // 2. Bigadiç Günlük Seanslar
       const bigRows = Object.keys(appData.branches.bigadic.days || {}).sort().reverse().map(d => {
         const r = appData.branches.bigadic.days[d];
+        const comb = Number(r.sessions || 0) + Number(r.extraSessions || 0);
+        const stf = Number(r.staffCount || 0);
         return {
           'Tarih': formatDateTR(d),
           'Şube': 'Bigadiç',
-          'Çalışan Personel': r.staffCount || 0,
+          'Çalışan Personel': stf,
           'Girilen Normal Seans': r.sessions || 0,
           'Ek / Değerlendirme Seansı': r.extraSessions || 0,
+          'Toplam Seans (Normal+Ek)': comb,
+          'Kişi Başı Ortalama': stf > 0 ? Number((comb / stf).toFixed(1)) : '-',
           'Günlük Not': r.note || '',
           'Ek Seans Notu': r.extraNote || ''
         };
