@@ -357,10 +357,28 @@
             </button>
           </div>
 
-          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
-            <div>
-              <label class="block text-[11px] font-semibold text-slate-600 mb-1">Dönem (Ay / Yıl)</label>
-              <input type="month" id="arcMonthInput" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-bold" />
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3">
+            <div class="sm:col-span-2 lg:col-span-2">
+              <label class="block text-[11px] font-semibold text-slate-600 mb-1">Dönem (Önceki / Sonraki Ay Kolay Geçiş)</label>
+              <input type="hidden" id="arcMonthInput" />
+              <div class="flex items-center gap-1 bg-slate-50 border border-slate-300 rounded-xl p-1">
+                <button type="button" onclick="shiftArchiveFormMonth(-1)"
+                  class="p-2 hover:bg-slate-200/80 active:scale-95 rounded-lg text-slate-700 font-bold transition shrink-0 cursor-pointer" title="Önceki Ay">
+                  <i data-lucide="chevron-left" class="w-4 h-4"></i>
+                </button>
+                <div class="flex items-center justify-center gap-1 flex-1 min-w-0">
+                  <select id="arcMonthSelect" onchange="onArchiveSelectPartsChange()"
+                    class="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs sm:text-sm font-extrabold text-slate-900 focus:outline-none cursor-pointer flex-1">
+                  </select>
+                  <select id="arcYearSelect" onchange="onArchiveSelectPartsChange()"
+                    class="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs sm:text-sm font-extrabold text-slate-700 focus:outline-none cursor-pointer">
+                  </select>
+                </div>
+                <button type="button" onclick="shiftArchiveFormMonth(1)"
+                  class="p-2 hover:bg-slate-200/80 active:scale-95 rounded-lg text-slate-700 font-bold transition shrink-0 cursor-pointer" title="Sonraki Ay">
+                  <i data-lucide="chevron-right" class="w-4 h-4"></i>
+                </button>
+              </div>
             </div>
             <div>
               <label class="block text-[11px] font-semibold text-slate-600 mb-1">Şube</label>
@@ -419,8 +437,11 @@
 
         <!-- Geçmiş Aylar Fatura & Özet Tablosu -->
         <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-          <div class="px-5 py-4 border-b border-slate-100 bg-slate-50/60">
+          <div class="px-5 py-4 border-b border-slate-100 bg-slate-50/60 flex flex-wrap items-center justify-between gap-2">
             <h3 class="text-sm font-extrabold text-slate-800">Geçmiş Aylara Ait Fatura, Seans ve Öğrenci Özeti</h3>
+            <button type="button" onclick="toggleArchiveSortOrder()" id="arcSortOrderBtn"
+              class="inline-flex items-center gap-1.5 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 text-xs font-bold px-3 py-1.5 rounded-xl shadow-xs transition cursor-pointer">
+            </button>
           </div>
           <div class="overflow-x-auto">
             <table class="w-full text-left border-collapse text-xs sm:text-sm">
@@ -632,10 +653,14 @@
     let paymentsBranchFilter = 'all';
     let paymentsStatusFilter = 'bekliyor';
     let archiveBranchFilter = 'all';
+    let archiveSortOrder = 'asc'; // 'asc' (Ocak -> Aralık kronolojik sıra) | 'desc' (En yeni ay üstte)
+    let archiveSelectedMonth = getTodayISO().slice(0, 7);
 
     // ============================================================================
     // 3. YARDIMCI TARİH & FORMAT FONKSİYONLARI
     // ============================================================================
+    const MONTH_NAMES_TR = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+
     function getTodayISO() {
       const d = new Date();
       const y = d.getFullYear();
@@ -658,6 +683,69 @@
       return new Date().toTimeString().slice(0, 8);
     }
 
+    // "2025-1", "2025-01", "01.2025", "2025/10", "Ekim 2025" vb. tüm ay formatlarını standart "YYYY-MM" yapar
+    function normalizeMonthISO(rawStr) {
+      if (!rawStr) return '';
+      const s = String(rawStr).trim();
+      const m1 = s.match(/^(\d{4})[-/. ]+(\d{1,2})$/);
+      if (m1) {
+        const yr = Number(m1[1]);
+        const mo = Math.min(12, Math.max(1, Number(m1[2])));
+        return `${yr}-${String(mo).padStart(2, '0')}`;
+      }
+      const m2 = s.match(/^(\d{1,2})[-/. ]+(\d{4})$/);
+      if (m2) {
+        const mo = Math.min(12, Math.max(1, Number(m2[1])));
+        const yr = Number(m2[2]);
+        return `${yr}-${String(mo).padStart(2, '0')}`;
+      }
+      const trAscii = ['ocak', 'subat', 'mart', 'nisan', 'mayis', 'haziran', 'temmuz', 'agustos', 'eylul', 'ekim', 'kasim', 'aralik'];
+      const lower = s.toLocaleLowerCase('tr-TR');
+      const yrMatch = lower.match(/\b(20\d{2})\b/);
+      if (yrMatch) {
+        for (let i = 0; i < 12; i++) {
+          if (lower.includes(MONTH_NAMES_TR[i].toLocaleLowerCase('tr-TR')) || lower.includes(trAscii[i])) {
+            return `${yrMatch[1]}-${String(i + 1).padStart(2, '0')}`;
+          }
+        }
+      }
+      return s;
+    }
+
+    // Ayları sayısal olarak (örn: 202501 ... 202509, 202510, 202511, 202512) hatasız sıralamak için anahtar
+    function getMonthSortNumber(yyyyMm) {
+      const norm = normalizeMonthISO(yyyyMm);
+      const parts = norm.split('-').map(Number);
+      if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+        return parts[0] * 100 + parts[1];
+      }
+      return 0;
+    }
+
+    function shiftMonthISO(yyyyMm, deltaMonths) {
+      const norm = normalizeMonthISO(yyyyMm) || getTodayISO().slice(0, 7);
+      const [y, m] = norm.split('-').map(Number);
+      const dt = new Date(y, (m - 1) + deltaMonths, 1);
+      return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
+    }
+
+    function buildYearOptionsHTML(selectedYear) {
+      const curY = new Date().getFullYear();
+      const selY = Number(selectedYear) || curY;
+      let minY = Math.min(2023, selY - 1);
+      let maxY = Math.max(curY + 2, selY + 1);
+      (appData?.monthlyArchive || []).forEach(r => {
+        const y = Number(String(normalizeMonthISO(r.month)).split('-')[0]);
+        if (y >= 2015 && y < minY) minY = y;
+        if (y <= 2040 && y > maxY) maxY = y;
+      });
+      let html = '';
+      for (let y = minY; y <= maxY; y++) {
+        html += `<option value="${y}" ${y === selY ? 'selected' : ''}>${y}</option>`;
+      }
+      return html;
+    }
+
     function formatDateTR(isoStr) {
       if (!isoStr) return '-';
       const p = isoStr.split('-');
@@ -667,15 +755,14 @@
 
     function formatMonthTR(yyyyMm) {
       if (!yyyyMm) return '-';
-      const [y, m] = yyyyMm.split('-').map(Number);
-      const names = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
-      return `${names[(m || 1) - 1]} ${y}`;
+      const norm = normalizeMonthISO(yyyyMm);
+      const [y, m] = norm.split('-').map(Number);
+      if (!y || !m) return yyyyMm;
+      return `${MONTH_NAMES_TR[(m || 1) - 1]} ${y}`;
     }
 
     function getPreviousMonthISO(yyyyMm) {
-      const [y, m] = yyyyMm.split('-').map(Number);
-      const dt = new Date(y, m - 2, 1);
-      return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
+      return shiftMonthISO(yyyyMm, -1);
     }
 
     function formatMoney(num) {
@@ -755,7 +842,13 @@
 
       ['ayvalik', 'bigadic'].forEach(br => {
         if (raw.branches && raw.branches[br]) {
-          base.branches[br].monthlyMeta = raw.branches[br].monthlyMeta || {};
+          const rawMeta = raw.branches[br].monthlyMeta || {};
+          const normMeta = {};
+          Object.keys(rawMeta).forEach(k => {
+            const nk = normalizeMonthISO(k) || k;
+            normMeta[nk] = { ...(normMeta[nk] || {}), ...(rawMeta[k] || {}) };
+          });
+          base.branches[br].monthlyMeta = normMeta;
           base.branches[br].days = raw.branches[br].days || {};
         }
       });
@@ -769,7 +862,10 @@
         ...item,
         comments: toArraySafe(item.comments)
       }));
-      base.monthlyArchive = toArraySafe(raw.monthlyArchive);
+      base.monthlyArchive = toArraySafe(raw.monthlyArchive).map(item => ({
+        ...item,
+        month: normalizeMonthISO(item.month)
+      }));
       base.updatedAt = raw.updatedAt || 0;
       base.lastWriteId = raw.lastWriteId || '';
       return base;
@@ -1202,11 +1298,13 @@
 
       const hasSelectedDayData = todayTotalSes > 0 || Number(dayRec.extraSessions || 0) > 0 || Boolean(dayRec.note) || Boolean(dayRec.extraNote);
       const isSelectedToday = selDate === getTodayISO();
+      const [selYearPart, selMonthPart] = normalizeMonthISO(selMonth).split('-');
+      const currentMonthISO = getTodayISO().slice(0, 7);
 
       const container = document.getElementById('branchTabContainer');
       container.innerHTML = `
-        <!-- ŞUBE DEV BANNER (KARIŞIKLIĞI ÖNLEYEN NET GÖRÜNÜM + HIZLI VERİ GİRİŞ BUTONU) -->
-        <div class="bg-gradient-to-r ${metaTheme.bannerBg} text-white rounded-3xl p-4 sm:p-6 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <!-- ŞUBE DEV BANNER (KARIŞIKLIĞI ÖNLEYEN NET GÖRÜNÜM + HIZLI AY GEÇİŞİ & VERİ GİRİŞ BUTONU) -->
+        <div class="bg-gradient-to-r ${metaTheme.bannerBg} text-white rounded-3xl p-4 sm:p-6 shadow-lg flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div class="space-y-1">
             <div class="inline-flex items-center gap-2 bg-white/15 backdrop-blur-sm px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider">
               <span>Aktif Şube Ekranı</span>
@@ -1215,14 +1313,44 @@
             <p class="text-xs sm:text-sm text-white/80">Bu ekrandaki tüm özet ve kayıtlar yalnızca <strong>${metaTheme.title}</strong> verileridir.</p>
           </div>
 
-          <!-- Ay Seçici & + Günlük Veri Girişi Butonu -->
-          <div class="flex flex-wrap sm:flex-nowrap items-stretch sm:items-center gap-2.5 w-full md:w-auto">
-            <div class="bg-white/15 backdrop-blur-sm border border-white/25 rounded-2xl px-3 py-2 flex items-center justify-between gap-2 flex-1 sm:flex-initial">
-              <div>
-                <label class="block text-[10px] font-bold uppercase text-white/85">İncelenen Ay</label>
-                <input type="month" value="${selMonth}" onchange="onBranchMonthChange('${branchKey}', this.value)"
-                  class="bg-white text-slate-900 text-xs sm:text-sm font-extrabold rounded-xl px-2.5 py-1 mt-0.5 focus:outline-none cursor-pointer" />
+          <!-- Kolay Önceki/Sonraki Ay Geçişi & + Günlük Veri Girişi Butonu -->
+          <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full lg:w-auto">
+            <div class="bg-white/15 backdrop-blur-sm border border-white/25 rounded-2xl p-1.5 flex items-center justify-between gap-1.5">
+              <button onclick="shiftBranchMonth('${branchKey}', -1)"
+                class="bg-white/20 hover:bg-white/35 active:scale-95 text-white rounded-xl px-2.5 py-2 transition flex items-center gap-1 text-xs font-extrabold cursor-pointer shrink-0"
+                title="Önceki Ay">
+                <i data-lucide="chevron-left" class="w-4 h-4"></i>
+                <span class="hidden sm:inline">Önceki Ay</span>
+              </button>
+
+              <div class="flex items-center gap-1 bg-white text-slate-900 rounded-xl px-2.5 py-1.5 shadow-sm">
+                <select onchange="onBranchMonthSelectParts('${branchKey}', this.value, null)"
+                  class="bg-transparent text-xs sm:text-sm font-extrabold text-slate-900 focus:outline-none cursor-pointer">
+                  ${MONTH_NAMES_TR.map((mName, idx) => {
+                    const mVal = String(idx + 1).padStart(2, '0');
+                    return `<option value="${mVal}" ${selMonthPart === mVal ? 'selected' : ''}>${mName}</option>`;
+                  }).join('')}
+                </select>
+                <select onchange="onBranchMonthSelectParts('${branchKey}', null, this.value)"
+                  class="bg-transparent text-xs sm:text-sm font-extrabold text-slate-600 focus:outline-none cursor-pointer">
+                  ${buildYearOptionsHTML(selYearPart)}
+                </select>
               </div>
+
+              <button onclick="shiftBranchMonth('${branchKey}', 1)"
+                class="bg-white/20 hover:bg-white/35 active:scale-95 text-white rounded-xl px-2.5 py-2 transition flex items-center gap-1 text-xs font-extrabold cursor-pointer shrink-0"
+                title="Sonraki Ay">
+                <span class="hidden sm:inline">Sonraki Ay</span>
+                <i data-lucide="chevron-right" class="w-4 h-4"></i>
+              </button>
+
+              ${selMonth !== currentMonthISO ? `
+                <button onclick="onBranchMonthChange('${branchKey}', '${currentMonthISO}')"
+                  class="bg-amber-400 hover:bg-amber-300 active:scale-95 text-slate-950 text-[11px] font-extrabold px-2.5 py-2 rounded-xl transition shrink-0 cursor-pointer"
+                  title="Bu Aya Dön">
+                  Bu Ay
+                </button>
+              ` : ''}
             </div>
 
             <button onclick="openDailyEntryModal('${branchKey}')"
@@ -1650,15 +1778,28 @@
     }
 
     function onBranchMonthChange(branchKey, newMonth) {
-      if (!newMonth) return;
-      selectedMonths[branchKey] = newMonth;
+      const norm = normalizeMonthISO(newMonth);
+      if (!norm) return;
+      selectedMonths[branchKey] = norm;
       // Seçili tarih farklı aydaysa o ayın 1'ine veya bugüne hizala
-      if (!selectedDates[branchKey].startsWith(newMonth)) {
+      if (!selectedDates[branchKey].startsWith(norm)) {
         const today = getTodayISO();
-        selectedDates[branchKey] = today.startsWith(newMonth) ? today : `${newMonth}-01`;
+        selectedDates[branchKey] = today.startsWith(norm) ? today : `${norm}-01`;
       }
       renderBranchDashboard(branchKey);
       lucide.createIcons();
+    }
+
+    function shiftBranchMonth(branchKey, deltaMonths) {
+      const nextM = shiftMonthISO(selectedMonths[branchKey], deltaMonths);
+      onBranchMonthChange(branchKey, nextM);
+    }
+
+    function onBranchMonthSelectParts(branchKey, newMonthPart, newYearPart) {
+      const [curY, curM] = normalizeMonthISO(selectedMonths[branchKey]).split('-');
+      const targetY = newYearPart || curY;
+      const targetM = newMonthPart || curM;
+      onBranchMonthChange(branchKey, `${targetY}-${targetM}`);
     }
 
     function onBranchDateChange(branchKey, newDate) {
@@ -2278,10 +2419,77 @@
       lucide.createIcons();
     }
 
+    function toggleArchiveSortOrder() {
+      archiveSortOrder = archiveSortOrder === 'asc' ? 'desc' : 'asc';
+      renderArchiveSection();
+      lucide.createIcons();
+    }
+
+    function compareArchiveRecords(a, b, order = archiveSortOrder) {
+      const ma = getMonthSortNumber(a.month);
+      const mb = getMonthSortNumber(b.month);
+      if (ma !== mb) {
+        return order === 'asc' ? (ma - mb) : (mb - ma);
+      }
+      // Aynı aydaki kayıtlarda her zaman önce Ayvalık, hemen altında Bigadiç gösterilsin
+      const ba = a.branch === 'ayvalik' ? 1 : 2;
+      const bb = b.branch === 'ayvalik' ? 1 : 2;
+      return ba - bb;
+    }
+
+    function syncArchiveMonthPickerUI() {
+      archiveSelectedMonth = normalizeMonthISO(archiveSelectedMonth) || getTodayISO().slice(0, 7);
+      const [selY, selM] = archiveSelectedMonth.split('-');
+
+      const hiddenInp = document.getElementById('arcMonthInput');
+      if (hiddenInp) hiddenInp.value = archiveSelectedMonth;
+
+      const mSel = document.getElementById('arcMonthSelect');
+      if (mSel) {
+        mSel.innerHTML = MONTH_NAMES_TR.map((mName, idx) => {
+          const mVal = String(idx + 1).padStart(2, '0');
+          return `<option value="${mVal}" ${selM === mVal ? 'selected' : ''}>${mName}</option>`;
+        }).join('');
+      }
+
+      const ySel = document.getElementById('arcYearSelect');
+      if (ySel) {
+        ySel.innerHTML = buildYearOptionsHTML(selY);
+      }
+    }
+
+    function shiftArchiveFormMonth(deltaMonths) {
+      archiveSelectedMonth = shiftMonthISO(archiveSelectedMonth, deltaMonths);
+      syncArchiveMonthPickerUI();
+    }
+
+    function onArchiveSelectPartsChange() {
+      const mSel = document.getElementById('arcMonthSelect');
+      const ySel = document.getElementById('arcYearSelect');
+      if (!mSel || !ySel) return;
+      archiveSelectedMonth = `${ySel.value}-${mSel.value}`;
+      const hiddenInp = document.getElementById('arcMonthInput');
+      if (hiddenInp) hiddenInp.value = archiveSelectedMonth;
+    }
+
+    function loadArchiveRecordToForm(id) {
+      const rec = (appData.monthlyArchive || []).find(x => x.id === id);
+      if (!rec) return;
+      archiveSelectedMonth = normalizeMonthISO(rec.month);
+      syncArchiveMonthPickerUI();
+      document.getElementById('arcBranchInput').value = rec.branch || 'ayvalik';
+      document.getElementById('arcInvoiceInput').value = rec.invoiceAmount || '';
+      document.getElementById('arcSessionsInput').value = rec.totalSessions || 0;
+      document.getElementById('arcExtraSessionsInput').value = rec.extraSessions || 0;
+      document.getElementById('arcStudentsInput').value = rec.studentCount || 0;
+      document.getElementById('arcNoteInput').value = rec.note || '';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      showToast(`${formatMonthTR(rec.month)} (${rec.branch === 'ayvalik' ? 'Ayvalık' : 'Bigadiç'}) düzenleme için forma yüklendi`);
+    }
+
     function autoFillArchiveFromSystem() {
-      const mEl = document.getElementById('arcMonthInput');
       const brEl = document.getElementById('arcBranchInput');
-      const monthStr = mEl.value || getTodayISO().slice(0, 7);
+      const monthStr = normalizeMonthISO(archiveSelectedMonth) || getTodayISO().slice(0, 7);
       const branchKey = brEl.value;
 
       const stats = calculateMonthStats(branchKey, monthStr);
@@ -2294,7 +2502,7 @@
     }
 
     function saveMonthlyArchiveRecord() {
-      const month = document.getElementById('arcMonthInput').value;
+      const month = normalizeMonthISO(archiveSelectedMonth || document.getElementById('arcMonthInput').value);
       const branch = document.getElementById('arcBranchInput').value;
       const invoiceAmount = parseFloat(document.getElementById('arcInvoiceInput').value) || 0;
       const totalSessions = parseInt(document.getElementById('arcSessionsInput').value, 10) || 0;
@@ -2307,8 +2515,8 @@
         return;
       }
 
-      // Aynı şube ve ay varsa güncelle, yoksa yeni ekle
-      const existingIdx = appData.monthlyArchive.findIndex(x => x.month === month && x.branch === branch);
+      // Aynı şube ve normalize edilmiş ay varsa güncelle, yoksa yeni ekle
+      const existingIdx = appData.monthlyArchive.findIndex(x => normalizeMonthISO(x.month) === month && x.branch === branch);
       const payload = {
         id: existingIdx >= 0 ? appData.monthlyArchive[existingIdx].id : ('arc-' + Date.now()),
         month,
@@ -2343,8 +2551,7 @@
     }
 
     function renderArchiveSection() {
-      const mEl = document.getElementById('arcMonthInput');
-      if (mEl && !mEl.value) mEl.value = getTodayISO().slice(0, 7);
+      syncArchiveMonthPickerUI();
 
       ['all', 'ayvalik', 'bigadic'].forEach(b => {
         const el = document.getElementById(`arcBrBtn-${b}`);
@@ -2355,6 +2562,13 @@
         }
       });
 
+      const sortBtn = document.getElementById('arcSortOrderBtn');
+      if (sortBtn) {
+        sortBtn.innerHTML = archiveSortOrder === 'asc'
+          ? `<i data-lucide="arrow-down-0-1" class="w-3.5 h-3.5 text-indigo-600"></i><span>Sıralama: Eskiden Yeniye (Ocak → Aralık)</span>`
+          : `<i data-lucide="arrow-down-1-0" class="w-3.5 h-3.5 text-indigo-600"></i><span>Sıralama: Yeniden Eskiye (Son Ay Üstte)</span>`;
+      }
+
       let sumAyvalik = 0;
       let sumBigadic = 0;
       (appData.monthlyArchive || []).forEach(r => {
@@ -2364,7 +2578,7 @@
 
       const list = [...(appData.monthlyArchive || [])]
         .filter(r => archiveBranchFilter === 'all' || r.branch === archiveBranchFilter)
-        .sort((a, b) => b.month.localeCompare(a.month));
+        .sort((a, b) => compareArchiveRecords(a, b, archiveSortOrder));
 
       const filteredSum = list.reduce((acc, x) => acc + Number(x.invoiceAmount || 0), 0);
 
@@ -2380,21 +2594,26 @@
 
       tbody.innerHTML = list.map(r => `
         <tr class="hover:bg-slate-50">
-          <td class="py-3 px-4 font-extrabold text-slate-900">${formatMonthTR(r.month)}</td>
-          <td class="py-3 px-4">
+          <td class="py-3 px-4 font-extrabold text-slate-900 whitespace-nowrap">${formatMonthTR(r.month)}</td>
+          <td class="py-3 px-4 whitespace-nowrap">
             ${r.branch === 'ayvalik'
               ? '<span class="text-xs font-bold px-2.5 py-0.5 rounded-md bg-sky-100 text-sky-800">🌊 Ayvalık</span>'
               : '<span class="text-xs font-bold px-2.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800">🌿 Bigadiç</span>'}
           </td>
-          <td class="py-3 px-4 text-right font-extrabold text-emerald-700">${formatMoney(r.invoiceAmount)}</td>
+          <td class="py-3 px-4 text-right font-extrabold text-emerald-700 whitespace-nowrap">${formatMoney(r.invoiceAmount)}</td>
           <td class="py-3 px-4 text-center font-bold text-slate-800">${r.totalSessions}</td>
           <td class="py-3 px-4 text-center font-semibold text-indigo-700">${r.extraSessions > 0 ? '+' + r.extraSessions : '0'}</td>
           <td class="py-3 px-4 text-center font-bold text-slate-800">${r.studentCount}</td>
           <td class="py-3 px-4 text-xs text-slate-600">${escapeHtml(r.note || '-')}</td>
-          <td class="py-3 px-3 text-right">
-            <button onclick="deleteArchiveRecord('${r.id}')" class="text-slate-400 hover:text-rose-600 p-1" title="Sil">
-              <i data-lucide="trash-2" class="w-4 h-4"></i>
-            </button>
+          <td class="py-3 px-3 text-right whitespace-nowrap">
+            <div class="inline-flex items-center gap-1">
+              <button onclick="loadArchiveRecordToForm('${r.id}')" class="text-slate-500 hover:text-indigo-600 p-1" title="Düzenle">
+                <i data-lucide="pencil" class="w-4 h-4"></i>
+              </button>
+              <button onclick="deleteArchiveRecord('${r.id}')" class="text-slate-400 hover:text-rose-600 p-1" title="Sil">
+                <i data-lucide="trash-2" class="w-4 h-4"></i>
+              </button>
+            </div>
           </td>
         </tr>
       `).join('');
@@ -2473,7 +2692,8 @@
 
       // 5. Sadece ortak kilidi açıksa Ay Sonu Fatura Özeti sekmesini Excel'e dahil et
       if (isPartnerUnlocked) {
-        const arcRows = (appData.monthlyArchive || []).map(a => ({
+        const sortedArc = [...(appData.monthlyArchive || [])].sort((a, b) => compareArchiveRecords(a, b, archiveSortOrder));
+        const arcRows = sortedArc.map(a => ({
           'Dönem': formatMonthTR(a.month),
           'Şube': a.branch === 'ayvalik' ? 'Ayvalık' : 'Bigadiç',
           'Fatura Tutarı (TL)': a.invoiceAmount || 0,
