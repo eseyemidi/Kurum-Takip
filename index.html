@@ -419,19 +419,59 @@
           </div>
         </div>
 
-        <!-- Genel Toplam Kartları -->
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div class="bg-white rounded-2xl p-4 border border-sky-200">
-            <span class="text-xs font-bold text-sky-700 uppercase">🌊 Ayvalık Kayıtlı Fatura Toplamı</span>
-            <div class="text-2xl font-extrabold text-slate-900 mt-1" id="arcTotalAyvalik">0 ₺</div>
+        <!-- Yıl / Dönem Seçenekleri Filtre Çubuğu (Tüm Zamanlar, Son 1 Yıl, 2025, 2026 vb.) -->
+        <div class="bg-white rounded-2xl p-3.5 sm:p-4 shadow-sm border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div class="flex items-center gap-2">
+            <i data-lucide="calendar-range" class="w-4 h-4 text-indigo-600 shrink-0"></i>
+            <span class="text-xs font-extrabold uppercase tracking-wider text-slate-700">Dönem / Yıl Seçimi:</span>
+            <span id="arcActivePeriodBadge" class="text-[11px] font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md"></span>
           </div>
-          <div class="bg-white rounded-2xl p-4 border border-amber-200">
-            <span class="text-xs font-bold text-amber-700 uppercase">🌿 Bigadiç Kayıtlı Fatura Toplamı</span>
-            <div class="text-2xl font-extrabold text-slate-900 mt-1" id="arcTotalBigadic">0 ₺</div>
+          <div id="archivePeriodFilterBar" class="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1.5 rounded-xl">
           </div>
-          <div class="bg-slate-900 text-white rounded-2xl p-4">
-            <span class="text-xs font-bold text-emerald-300 uppercase">Seçili Liste Genel Fatura Toplamı</span>
-            <div class="text-2xl font-extrabold text-white mt-1" id="arcTotalCombined">0 ₺</div>
+        </div>
+
+        <!-- Seçili Döneme Göre Toplam & Ortalama Fatura Kartları (4 Kart) -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div class="bg-white rounded-2xl p-4 border border-sky-200 flex flex-col justify-between">
+            <div>
+              <span class="text-xs font-bold text-sky-700 uppercase" id="arcLabelAyvalik">🌊 Ayvalık Fatura Toplamı</span>
+              <div class="text-2xl font-extrabold text-slate-900 mt-1" id="arcTotalAyvalik">0 ₺</div>
+            </div>
+            <div class="pt-2.5 mt-2.5 border-t border-slate-100 flex items-center justify-between text-xs">
+              <span class="text-slate-500">Fatura Ort.:</span>
+              <strong class="text-sky-800 font-extrabold" id="arcAvgAyvalik">0 ₺ (0 fatura)</strong>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-2xl p-4 border border-emerald-200 flex flex-col justify-between">
+            <div>
+              <span class="text-xs font-bold text-emerald-700 uppercase" id="arcLabelBigadic">🌿 Bigadiç Fatura Toplamı</span>
+              <div class="text-2xl font-extrabold text-slate-900 mt-1" id="arcTotalBigadic">0 ₺</div>
+            </div>
+            <div class="pt-2.5 mt-2.5 border-t border-slate-100 flex items-center justify-between text-xs">
+              <span class="text-slate-500">Fatura Ort.:</span>
+              <strong class="text-emerald-800 font-extrabold" id="arcAvgBigadic">0 ₺ (0 fatura)</strong>
+            </div>
+          </div>
+
+          <div class="bg-slate-900 text-white rounded-2xl p-4 flex flex-col justify-between">
+            <div>
+              <span class="text-xs font-bold text-emerald-300 uppercase" id="arcLabelCombined">Seçili Liste Genel Toplamı</span>
+              <div class="text-2xl font-extrabold text-white mt-1" id="arcTotalCombined">0 ₺</div>
+            </div>
+            <div class="pt-2.5 mt-2.5 border-t border-slate-700 text-xs text-slate-300" id="arcCountCombined">
+              0 fatura kaydı
+            </div>
+          </div>
+
+          <div class="bg-gradient-to-br from-indigo-600 to-indigo-800 text-white rounded-2xl p-4 shadow-sm flex flex-col justify-between">
+            <div>
+              <span class="text-xs font-bold text-indigo-200 uppercase" id="arcLabelAverage">📊 Seçili Dönem Ortalaması</span>
+              <div class="text-2xl font-extrabold text-white mt-1" id="arcAvgSelected">0 ₺</div>
+            </div>
+            <div class="pt-2.5 mt-2.5 border-t border-indigo-500/50 text-[11px] text-indigo-100 font-medium" id="arcAvgSubnote">
+              Girilen faturaların ortalaması
+            </div>
           </div>
         </div>
 
@@ -653,6 +693,7 @@
     let paymentsBranchFilter = 'all';
     let paymentsStatusFilter = 'bekliyor';
     let archiveBranchFilter = 'all';
+    let archivePeriodFilter = 'all'; // 'all' | 'last12' | '2025' | '2026' vb.
     let archiveSortOrder = 'asc'; // 'asc' (Ocak -> Aralık kronolojik sıra) | 'desc' (En yeni ay üstte)
     let archiveSelectedMonth = getTodayISO().slice(0, 7);
 
@@ -2550,6 +2591,12 @@
       lucide.createIcons();
     }
 
+    function setArchivePeriodFilter(periodKey) {
+      archivePeriodFilter = periodKey;
+      renderArchiveSection();
+      lucide.createIcons();
+    }
+
     function renderArchiveSection() {
       syncArchiveMonthPickerUI();
 
@@ -2557,8 +2604,8 @@
         const el = document.getElementById(`arcBrBtn-${b}`);
         if (el) {
           el.className = archiveBranchFilter === b
-            ? 'px-3 py-1.5 rounded-lg text-xs font-extrabold bg-slate-900 text-white shadow-xs transition'
-            : 'px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:bg-white transition';
+            ? 'px-3 py-1.5 rounded-lg text-xs font-extrabold bg-slate-900 text-white shadow-xs transition cursor-pointer'
+            : 'px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:bg-white transition cursor-pointer';
         }
       });
 
@@ -2569,26 +2616,117 @@
           : `<i data-lucide="arrow-down-1-0" class="w-3.5 h-3.5 text-indigo-600"></i><span>Sıralama: Yeniden Eskiye (Son Ay Üstte)</span>`;
       }
 
-      let sumAyvalik = 0;
-      let sumBigadic = 0;
-      (appData.monthlyArchive || []).forEach(r => {
-        if (r.branch === 'ayvalik') sumAyvalik += Number(r.invoiceAmount || 0);
-        if (r.branch === 'bigadic') sumBigadic += Number(r.invoiceAmount || 0);
-      });
+      const allRecords = appData.monthlyArchive || [];
 
-      const list = [...(appData.monthlyArchive || [])]
+      // Mevcut yılları dinamik topla (2025 ve 2026 her zaman hazır bulunsun, yeni yıllar girildikçe otomatik eklensin)
+      const yearSet = new Set(['2025', '2026', String(new Date().getFullYear())]);
+      allRecords.forEach(r => {
+        const yr = normalizeMonthISO(r.month).split('-')[0];
+        if (/^20\d{2}$/.test(yr)) yearSet.add(yr);
+      });
+      const sortedYears = Array.from(yearSet).sort();
+
+      const periodOptions = [
+        { key: 'all', label: 'Tüm Zamanlar' },
+        { key: 'last12', label: 'Son 1 Yıl' },
+        ...sortedYears.map(yr => ({ key: yr, label: `Sadece ${yr}` }))
+      ];
+
+      const periodBar = document.getElementById('archivePeriodFilterBar');
+      if (periodBar) {
+        periodBar.innerHTML = periodOptions.map(opt => {
+          const active = archivePeriodFilter === opt.key;
+          return `<button type="button" onclick="setArchivePeriodFilter('${opt.key}')"
+            class="px-3 py-1.5 rounded-lg text-xs transition cursor-pointer ${active ? 'font-extrabold bg-indigo-600 text-white shadow-xs' : 'font-semibold text-slate-600 hover:bg-white'}">
+            ${opt.label}
+          </button>`;
+        }).join('');
+      }
+
+      // Dönem / Yıl filtresini uygula
+      let periodRecords = allRecords;
+      let periodLabelShort = 'Tüm Zamanlar';
+      let periodBadgeText = 'Kayıtlı tüm aylar';
+
+      if (archivePeriodFilter === 'last12') {
+        let latestMonthISO = getTodayISO().slice(0, 7);
+        let maxSort = 0;
+        allRecords.forEach(r => {
+          const sn = getMonthSortNumber(r.month);
+          if (sn > maxSort) {
+            maxSort = sn;
+            latestMonthISO = normalizeMonthISO(r.month);
+          }
+        });
+        const startMonthISO = shiftMonthISO(latestMonthISO, -11);
+        const minSort = getMonthSortNumber(startMonthISO);
+        const endSort = getMonthSortNumber(latestMonthISO);
+        periodRecords = allRecords.filter(r => {
+          const sn = getMonthSortNumber(r.month);
+          return sn >= minSort && sn <= endSort;
+        });
+        periodLabelShort = 'Son 1 Yıl';
+        periodBadgeText = `${formatMonthTR(startMonthISO)} – ${formatMonthTR(latestMonthISO)}`;
+      } else if (archivePeriodFilter !== 'all') {
+        periodRecords = allRecords.filter(r => normalizeMonthISO(r.month).startsWith(archivePeriodFilter + '-'));
+        periodLabelShort = archivePeriodFilter;
+        periodBadgeText = `${archivePeriodFilter} Yılı Faturaları`;
+      }
+
+      const badgeEl = document.getElementById('arcActivePeriodBadge');
+      if (badgeEl) badgeEl.textContent = periodBadgeText;
+
+      // Seçili dönemdeki Ayvalık ve Bigadiç toplam & ortalamaları
+      const ayvRecs = periodRecords.filter(r => r.branch === 'ayvalik');
+      const ayvBilled = ayvRecs.filter(r => Number(r.invoiceAmount || 0) > 0);
+      const sumAyvalik = ayvRecs.reduce((acc, r) => acc + Number(r.invoiceAmount || 0), 0);
+      const avgAyvalik = ayvBilled.length > 0 ? (sumAyvalik / ayvBilled.length) : 0;
+
+      const bigRecs = periodRecords.filter(r => r.branch === 'bigadic');
+      const bigBilled = bigRecs.filter(r => Number(r.invoiceAmount || 0) > 0);
+      const sumBigadic = bigRecs.reduce((acc, r) => acc + Number(r.invoiceAmount || 0), 0);
+      const avgBigadic = bigBilled.length > 0 ? (sumBigadic / bigBilled.length) : 0;
+
+      // Şube filtresi de uygulanmış liste
+      const list = [...periodRecords]
         .filter(r => archiveBranchFilter === 'all' || r.branch === archiveBranchFilter)
         .sort((a, b) => compareArchiveRecords(a, b, archiveSortOrder));
 
+      const filteredBilled = list.filter(r => Number(r.invoiceAmount || 0) > 0);
       const filteredSum = list.reduce((acc, x) => acc + Number(x.invoiceAmount || 0), 0);
+      const avgSelected = filteredBilled.length > 0 ? (filteredSum / filteredBilled.length) : 0;
+      const distinctBilledMonths = new Set(filteredBilled.map(r => normalizeMonthISO(r.month))).size;
+      const twoBranchMonthlyAvg = distinctBilledMonths > 0 ? (filteredSum / distinctBilledMonths) : 0;
 
+      const branchLabelShort = archiveBranchFilter === 'ayvalik'
+        ? 'Ayvalık'
+        : archiveBranchFilter === 'bigadic'
+          ? 'Bigadiç'
+          : 'Tüm Şubeler';
+
+      document.getElementById('arcLabelAyvalik').textContent = `🌊 Ayvalık Toplam (${periodLabelShort})`;
       document.getElementById('arcTotalAyvalik').textContent = formatMoney(sumAyvalik);
+      document.getElementById('arcAvgAyvalik').textContent = `${formatMoney(avgAyvalik)} (${ayvBilled.length} fatura)`;
+
+      document.getElementById('arcLabelBigadic').textContent = `🌿 Bigadiç Toplam (${periodLabelShort})`;
       document.getElementById('arcTotalBigadic').textContent = formatMoney(sumBigadic);
+      document.getElementById('arcAvgBigadic').textContent = `${formatMoney(avgBigadic)} (${bigBilled.length} fatura)`;
+
+      document.getElementById('arcLabelCombined').textContent = `Genel Toplam (${branchLabelShort} • ${periodLabelShort})`;
       document.getElementById('arcTotalCombined').textContent = formatMoney(filteredSum);
+      document.getElementById('arcCountCombined').textContent = archiveBranchFilter === 'all' && distinctBilledMonths > 0
+        ? `Girilen ${filteredBilled.length} fatura (${distinctBilledMonths} farklı ay)`
+        : `Girilen ${filteredBilled.length} fatura toplamı`;
+
+      document.getElementById('arcLabelAverage').textContent = `📊 ${periodLabelShort} Fatura Ortalaması`;
+      document.getElementById('arcAvgSelected').textContent = formatMoney(avgSelected);
+      document.getElementById('arcAvgSubnote').textContent = archiveBranchFilter === 'all' && distinctBilledMonths > 0
+        ? `${filteredBilled.length} fatura ort. • İki şube aylık: ${formatMoney(twoBranchMonthlyAvg)}`
+        : `${filteredBilled.length} girilen faturanın ortalaması`;
 
       const tbody = document.getElementById('archiveTableBody');
       if (list.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="8" class="py-8 text-center text-xs text-slate-400">Henüz kayıtlı ay sonu fatura özeti bulunmuyor. Yukarıdan ekleyebilirsiniz.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" class="py-8 text-center text-xs text-slate-400">Seçili dönem (${escapeHtml(periodBadgeText)}) için kayıtlı fatura özeti bulunmuyor.</td></tr>`;
         return;
       }
 
